@@ -1,0 +1,17 @@
+{
+  "name": "certificate-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for certificate verification",
+  "scripts": {
+    "compile": "truffle compile",
+    "migrate": "truffle migrate",
+    "test": "truffle test"
+  },
+  "dependencies": {
+    "@truffle/hdwallet-provider": "^2.1.0"
+  },
+  "devDependencies": {
+    "truffle": "^5.11.0"
+  }
+}
+
