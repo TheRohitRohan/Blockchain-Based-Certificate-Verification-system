@@ -42,46 +42,50 @@ class Blockchain
        BASIC CONNECTIVITY TEST
        ======================= */
 
-       public function getCurrentBlock(): int
-       {
-           $blockNumber = null;
-       
-           $this->web3->eth->blockNumber(function ($err, $block) use (&$blockNumber) {
-               if ($err !== null) {
-                   throw new \Exception('Failed to connect to blockchain');
-               }
-       
-               // Handle BigInteger properly
-               if ($block instanceof \phpseclib\Math\BigInteger) {
-                   $blockNumber = (int) $block->toString();
-               } else {
-                   $blockNumber = (int) $block;
-               }
-           });
-       
-           return $blockNumber;
-       }
+public function getCurrentBlock(): int
+    {
+        $blockNumber = 0;
+    
+        $this->web3->eth->blockNumber(function ($err, $block) use (&$blockNumber) {
+            if ($err !== null) {
+                throw new \Exception('Failed to connect to blockchain: ' . $err->getMessage());
+            }
+    
+            // Handle BigInteger properly
+            if ($block instanceof \phpseclib\Math\BigInteger) {
+                $blockNumber = (int) $block->toString();
+            } elseif (is_string($block) && strpos($block, '0x') === 0) {
+                $blockNumber = hexdec($block);
+            } else {
+                $blockNumber = (int) $block;
+            }
+        });
+    
+        return $blockNumber;
+    }
        
 
     /* =======================
        SMART CONTRACT READS
        ======================= */
 
-    public function getAdmin(): string
+public function getAdmin(): string
     {
         $admin = '';
 
         $this->contract->call('admin', function ($err, $result) use (&$admin) {
             if ($err !== null) {
-                throw new \Exception('Failed to read admin from contract');
+                throw new \Exception('Failed to read admin from contract: ' . $err->getMessage());
             }
-            $admin = $result[0];
+            if (is_array($result) && isset($result[0])) {
+                $admin = $result[0];
+            }
         });
 
         return $admin;
     }
 
-    public function verifyCertificate(string $certificateId, string $certificateHash): bool
+public function verifyCertificate(string $certificateId, string $certificateHash): bool
     {
         $isValid = false;
 
@@ -91,13 +95,222 @@ class Blockchain
             $certificateHash,
             function ($err, $result) use (&$isValid) {
                 if ($err !== null) {
-                    throw new \Exception('verifyCertificate call failed');
+                    throw new \Exception('verifyCertificate call failed: ' . $err->getMessage());
                 }
-                $isValid = (bool) $result[0];
+                if (is_array($result) && isset($result[0])) {
+                    $isValid = (bool) $result[0];
+                }
             }
         );
 
         return $isValid;
+    }
+
+    /* =======================
+       SMART CONTRACT WRITES
+       ======================= */
+
+    public function generateCertificateHash($certificateData): string
+    {
+        return hash('sha256', json_encode($certificateData));
+    }
+
+    public function issueCertificate($certificateData): array
+    {
+        try {
+            $config = require __DIR__ . '/../config.php';
+            $privateKey = $config['blockchain']['private_key'];
+            
+            if (empty($privateKey)) {
+                // For testing without private key, return mock success
+                return [
+                    'success' => true,
+                    'tx_hash' => '0x' . bin2hex(random_bytes(32)),
+                    'certificate_hash' => $this->generateCertificateHash($certificateData),
+                    'note' => 'Mock transaction - configure private key for real blockchain'
+                ];
+            }
+
+            $certificateId = $certificateData['certificate_id'];
+            $studentName = $certificateData['student_name'];
+            $universityName = $certificateData['university_name'] ?? 'Test University';
+            $courseName = $certificateData['course_name'];
+            $issueDate = $certificateData['issue_date'];
+            $certificateHash = $this->generateCertificateHash($certificateData);
+
+            $txHash = null;
+            $error = null;
+
+            // Send transaction to smart contract (6 parameters as per ABI)
+            $this->contract->send(
+                'issueCertificate',
+                $certificateId,        // certificateId
+                $studentName,          // studentName  
+                $universityName,      // universityName
+                $courseName,          // courseName
+                $issueDate,           // issueDate
+                $certificateHash,     // certificateHash
+                [
+                    'from' => $this->getAddressFromPrivateKey($privateKey),
+                    'gas' => $config['blockchain']['gas_limit']
+                ],
+                function ($err, $tx) use (&$txHash, &$error) {
+                    if ($err !== null) {
+                        $error = $err->getMessage();
+                        return;
+                    }
+                    $txHash = $tx;
+                }
+            );
+
+            if ($error) {
+                throw new \Exception('Blockchain transaction failed: ' . $error);
+            }
+
+            if (empty($txHash)) {
+                throw new \Exception('Transaction hash not returned');
+            }
+
+            // Wait for transaction confirmation
+            $this->waitForTransaction($txHash);
+
+            return [
+                'success' => true,
+                'tx_hash' => $txHash,
+                'certificate_hash' => $certificateHash
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function getCertificate(string $certificateId): ?array
+    {
+        $certificate = null;
+
+        $this->contract->call(
+            'getCertificate',
+            $certificateId,
+            function ($err, $result) use (&$certificate) {
+                if ($err !== null) {
+                    throw new \Exception('getCertificate call failed: ' . $err->getMessage());
+                }
+                
+                if (is_array($result) && count($result) >= 9) {
+                    $certificate = [
+                        'student_name' => $result[0] ?? '',
+                        'university_name' => $result[1] ?? '',
+                        'course_name' => $result[2] ?? '',
+                        'issue_date' => $result[3] ?? '',
+                        'certificate_hash' => $result[4] ?? '',
+                        'is_valid' => $result[5] ?? false,
+                        'is_revoked' => $result[6] ?? false,
+                        'issued_by' => $result[7] ?? '',
+                        'timestamp' => $result[8] ?? 0
+                    ];
+                }
+            }
+        );
+
+        return $certificate;
+    }
+
+    /* =======================
+       HELPER METHODS
+       ======================= */
+
+    private function getAddressFromPrivateKey(string $privateKey): string
+    {
+        // In a production environment, use a proper library like web3.php's account functions
+        // For now, this is a simplified approach
+        $config = require __DIR__ . '/../config.php';
+        
+        // If we have a default address in config, use it
+        if (isset($config['blockchain']['default_address']) && !empty($config['blockchain']['default_address'])) {
+            return $config['blockchain']['default_address'];
+        }
+        
+        // For Ganache, return a common test address
+        return '0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1';
+    }
+
+    private function waitForTransaction(string $txHash, int $maxWaitTime = 30): bool
+    {
+        $startTime = time();
+        
+        while (time() - $startTime < $maxWaitTime) {
+            $receipt = null;
+            $this->web3->eth->getTransactionReceipt($txHash, function ($err, $result) use (&$receipt) {
+                if ($err === null && $result !== null) {
+                    $receipt = $result;
+                }
+            });
+
+            if ($receipt && isset($receipt->status)) {
+                return $receipt->status === '0x1' || $receipt->status === true;
+            }
+
+            sleep(1);
+        }
+
+        throw new \Exception('Transaction confirmation timeout');
+    }
+
+    public function revokeCertificate(string $certificateId): array
+    {
+        try {
+            $config = require __DIR__ . '/../config.php';
+            $privateKey = $config['blockchain']['private_key'];
+            
+            if (empty($privateKey)) {
+                throw new \Exception('Private key not configured for blockchain transactions');
+            }
+
+            $txHash = null;
+            $error = null;
+
+            $this->contract->send(
+                'revokeCertificate',
+                [$certificateId],
+                [
+                    'from' => $this->getAddressFromPrivateKey($privateKey),
+                    'gas' => $config['blockchain']['gas_limit']
+                ],
+                function ($err, $tx) use (&$txHash, &$error) {
+                    if ($err !== null) {
+                        $error = $err->getMessage();
+                        return;
+                    }
+                    $txHash = $tx;
+                }
+            );
+
+            if ($error) {
+                throw new \Exception('Blockchain transaction failed: ' . $error);
+            }
+
+            if (empty($txHash)) {
+                throw new \Exception('Transaction hash not returned');
+            }
+
+            // Wait for transaction confirmation
+            $this->waitForTransaction($txHash);
+
+            return [
+                'success' => true,
+                'tx_hash' => $txHash
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
     }
 }
 

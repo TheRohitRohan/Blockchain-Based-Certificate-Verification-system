@@ -30,9 +30,45 @@ const StudentDashboard = () => {
     return `${window.location.origin}/verify?certificate_id=${certificateId}`;
   };
 
-  const handleDownload = (certificate) => {
-    // In a real implementation, you would download the PDF
-    toast.info('Download feature coming soon');
+const handleDownload = async (certificate) => {
+    try {
+      // Show loading toast
+      const loadingToast = toast.loading('Generating certificate PDF...');
+      
+      // Use the API service to download PDF
+      const response = await certificateAPI.downloadPDF(certificate.certificate_id);
+
+      // Get the blob from response
+      const blob = response.data;
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Generate filename
+      const studentName = certificate.student_name ? certificate.student_name.replace(/[^a-zA-Z0-9]/g, '_') : 'student';
+      const courseName = certificate.course_name ? certificate.course_name.replace(/[^a-zA-Z0-9]/g, '_') : 'course';
+      const filename = `${certificate.certificate_id}_${studentName}_${courseName}.pdf`;
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      // Show success toast
+      toast.update(loadingToast, {
+        render: 'Certificate downloaded successfully!',
+        type: 'success',
+        isLoading: false,
+        autoClose: 3000
+      });
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to download certificate: ' + (error.response?.data?.error || error.message));
+    }
   };
 
   return (

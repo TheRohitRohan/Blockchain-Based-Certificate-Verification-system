@@ -29,6 +29,12 @@ export const certificateAPI = {
     api.post('/certificates/verify', { certificate_id: certificateId, certificate_hash: certificateHash }),
   getAll: () => api.get('/certificates'),
   revoke: (certificateId) => api.post('/certificates/revoke', { certificate_id: certificateId }),
+  downloadPDF: (certificateId) => {
+    return api.get('/certificates/download', {
+      params: { certificate_id: certificateId },
+      responseType: 'blob'
+    });
+  },
 };
 
 export const universityAPI = {

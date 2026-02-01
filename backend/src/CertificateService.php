@@ -29,12 +29,11 @@ class CertificateService {
             // Generate certificate ID
             $certificateId = 'CERT-' . strtoupper(uniqid());
 
-            // Prepare certificate data for hashing
+// Prepare certificate data for hashing
             $certificateData = [
                 'certificate_id' => $certificateId,
                 'student_name' => $student['full_name'],
-                'student_id' => $student['student_id'],
-                'university_id' => $data['university_id'],
+                'university_name' => $student['university_name'] ?? 'Demo University',
                 'course_name' => $data['course_name'],
                 'degree_type' => $data['degree_type'] ?? null,
                 'issue_date' => $data['issue_date']
@@ -53,7 +52,7 @@ class CertificateService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
-            $stmt->execute([
+$stmt->execute([
                 $certificateId,
                 $data['student_id'],
                 $data['university_id'],
@@ -61,16 +60,25 @@ class CertificateService {
                 $data['degree_type'] ?? null,
                 $data['issue_date'],
                 $certificateHash,
-                $blockchainResult['tx_hash']
+                $blockchainResult['tx_hash'] ?? null
             ]);
 
-            $this->db->commit();
+$this->db->commit();
+
+            // Generate PDF certificate
+            try {
+                $pdfGenerator = new PDFGenerator();
+                $pdfFilename = $pdfGenerator->generateCertificatePDF($certificateId);
+            } catch (\Exception $e) {
+                // Log error but don't fail certificate creation
+                error_log("PDF generation failed for {$certificateId}: " . $e->getMessage());
+            }
 
             return [
                 'success' => true,
                 'certificate_id' => $certificateId,
                 'certificate_hash' => $certificateHash,
-                'tx_hash' => $blockchainResult['tx_hash']
+                'tx_hash' => $blockchainResult['tx_hash'] ?? 'pending'
             ];
         } catch (\Exception $e) {
             $this->db->rollBack();
@@ -79,17 +87,18 @@ class CertificateService {
     }
 
     public function getCertificate($certificateId) {
-        $stmt = $this->db->prepare("
+$stmt = $this->db->prepare("
             SELECT 
                 c.*,
                 s.student_id,
                 u.full_name as student_name,
-                un.name as university_name
+                un.name as university_name,
+                CASE WHEN c.is_revoked = 1 THEN 1 ELSE 0 END as is_revoked
             FROM certificates c
             JOIN students s ON c.student_id = s.id
             JOIN users u ON s.user_id = u.id
             JOIN universities un ON c.university_id = un.id
-            WHERE c.certificate_id = ?
+            WHERE c.certificate_id = ? AND c.status = 'active'
         ");
         $stmt->execute([$certificateId]);
         return $stmt->fetch();
@@ -130,9 +139,9 @@ class CertificateService {
     }
 
     public function revokeCertificate($certificateId, $revokedBy) {
-        $stmt = $this->db->prepare("
+$stmt = $this->db->prepare("
             UPDATE certificates 
-            SET is_revoked = TRUE, revoked_at = NOW(), revoked_by = ?
+            SET status = 'revoked', revoked_at = NOW(), revoked_by = ?
             WHERE certificate_id = ?
         ");
         return $stmt->execute([$revokedBy, $certificateId]);

@@ -31,6 +31,7 @@ spl_autoload_register(function ($class) {
 use App\Auth;
 use App\CertificateService;
 use App\Database;
+use App\PDFGenerator;
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_SERVER['REQUEST_URI'] ?? '/';
@@ -158,12 +159,62 @@ switch ($path) {
         }
         break;
 
-    case '/certificates/revoke':
+case '/certificates/revoke':
         if ($method === 'POST') {
             $user = requireAuth($token, $auth, ['admin']);
             $data = json_decode(file_get_contents('php://input'), true);
             $result = $certService->revokeCertificate($data['certificate_id'], $user['user_id']);
             echo json_encode(['success' => $result]);
+        }
+        break;
+
+    case '/certificates/download':
+        if ($method === 'GET') {
+            $user = requireAuth($token, $auth);
+            $certificateId = $_GET['certificate_id'] ?? '';
+            
+            if (empty($certificateId)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Certificate ID required']);
+                exit;
+            }
+            
+            try {
+                $pdfGenerator = new PDFGenerator();
+                
+                // Check if PDF already exists
+                $existingPDF = $pdfGenerator->getPDFPath($certificateId);
+                
+                if ($existingPDF && file_exists($existingPDF)) {
+                    // Serve existing PDF
+                    $filename = basename($existingPDF);
+                } else {
+                    // Generate new PDF
+                    $filename = $pdfGenerator->generateCertificatePDF($certificateId);
+                    $existingPDF = $pdfGenerator->getPDFPath($certificateId);
+                }
+                
+                if (!$existingPDF || !file_exists($existingPDF)) {
+                    http_response_code(500);
+                    echo json_encode(['error' => 'PDF generation failed']);
+                    exit;
+                }
+                
+                // Serve PDF file
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Length: ' . filesize($existingPDF));
+                header('Cache-Control: private, no-cache, no-store, must-revalidate');
+                header('Pragma: no-cache');
+                header('Expires: 0');
+                
+                readfile($existingPDF);
+                exit;
+                
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'PDF generation failed: ' . $e->getMessage()]);
+            }
         }
         break;
 
