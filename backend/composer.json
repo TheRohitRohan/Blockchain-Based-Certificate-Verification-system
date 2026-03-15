@@ -10,7 +10,7 @@
         "ext-curl": "*",
         "ext-openssl": "*",
         "ext-gd": "*",
-        "web3p/web3.php": "^0.3.2",
+        "web3p/web3.php": "^0.3",
         "mpdf/mpdf": "^8.2",
         "tecnickcom/tcpdf": "^6.6",
         "setasign/fpdi": "^2.6",
@@ -19,7 +19,12 @@
         "vlucas/phpdotenv": "^5.5",
         "kornrunner/keccak": "^1.1",
         "endroid/qr-code": "^5.0",
-        "setasign/fpdf": "^1.8"
+        "setasign/fpdf": "^1.8",
+        "setasign/fpdi-tcpdf": "^2.3"
+    },
+    "suggest": {
+        "ext-gmp": "Required by kornrunner/ethereum-offline-raw-tx for real blockchain transaction signing",
+        "kornrunner/ethereum-offline-raw-tx": "Required for real raw transaction signing on blockchain (needs ext-gmp)"
     },
     "autoload": {
         "psr-4": {

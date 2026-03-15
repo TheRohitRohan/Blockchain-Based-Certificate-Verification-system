@@ -124,12 +124,15 @@ CREATE TABLE IF NOT EXISTS university_keys (
     university_id INT NOT NULL,
     certificate_path VARCHAR(500) NOT NULL COMMENT 'Path to .p12 certificate file',
     certificate_password VARCHAR(255) NOT NULL COMMENT 'Encrypted password for certificate',
+    public_key_pem TEXT NULL COMMENT 'RSA public key in PEM format',
+    key_fingerprint VARCHAR(64) NULL COMMENT 'SHA256 fingerprint of the public key',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE CASCADE,
     INDEX idx_university (university_id),
-    INDEX idx_active (is_active)
+    INDEX idx_active (is_active),
+    UNIQUE KEY idx_fingerprint (key_fingerprint)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Insert default admin user (password: admin123)

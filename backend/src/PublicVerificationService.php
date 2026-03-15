@@ -127,19 +127,22 @@ class PublicVerificationService {
             
             // Build response
             return [
-                'success' => true,
-                'verification_method' => 'pdf_upload',
-                'matched' => $differences['matched'], // Boolean: true if uploaded PDF matches stored certificate
-                'conclusion' => $this->buildConclusion($verificationResult, $comparison),
-                'verification_result' => $verificationResult,
-                'comparison' => $comparison,
+                'success'              => true,
+                'verification_method'  => 'pdf_upload',
+                'matched'              => $differences['matched'],
+                'conclusion'           => $this->buildConclusion($verificationResult, $comparison),
+                'checks'               => $verificationResult['checks'] ?? [],
+                'signature'            => $verificationResult['signature'] ?? ['signed' => false, 'valid' => false],
+                'metadata_differences' => $differences['field_comparison'] ?? [],
+                'pdf_hash_match'       => $comparison['pdf_hash_match'] ?? false,
+                'blockchain_valid'     => $verificationResult['blockchain_valid'] ?? false,
                 'uploaded_certificate' => [
                     'filename' => $uploadedFile['name'],
-                    'size' => $uploadedFile['size']
+                    'size'     => $uploadedFile['size'],
                 ],
-                'stored_certificate' => $storedCertificate,
+                'stored_certificate'     => $storedCertificate,
                 'stored_certificate_pdf' => $storedPdfData,
-                'differences' => $differences
+                'differences'            => $differences,
             ];
             
         } catch (\Exception $e) {
@@ -208,6 +211,16 @@ class PublicVerificationService {
             if (!empty($certificate['metadata_json'])) {
                 $certificate['metadata'] = json_decode($certificate['metadata_json'], true);
             }
+            // Strip raw metadata JSON string and internal DB fields from public response
+            unset($certificate['metadata_json']);
+            unset($certificate['pdf_hash']);
+            unset($certificate['metadata_hash']);
+            unset($certificate['onchain_hash']);
+            unset($certificate['block_number']);
+            unset($certificate['chain_id']);
+            unset($certificate['schema_version']);
+            unset($certificate['revoked_by']);
+            unset($certificate['id']);
         }
         
         return $certificate;
@@ -235,7 +248,7 @@ class PublicVerificationService {
         $pdfBase64 = base64_encode($pdfContent);
         
         // Generate download URL
-        $downloadUrl = $this->config['app']['api_url'] . '/public/certificate/download?certificate_id=' . urlencode($certificateId);
+        $downloadUrl = $this->config['app']['base_url'] . '/public/certificate/download?certificate_id=' . urlencode($certificateId);
         
         return [
             'filename' => $certificate['pdf_path'],
@@ -330,11 +343,11 @@ class PublicVerificationService {
         // Determine overall match status
         $metadataMatch = $comparison['metadata_match'] ?? false;
         $pdfHashMatch = $comparison['pdf_hash_match'] ?? false;
-        $signatureValid = isset($verificationResult['signature']) && 
-                         ($verificationResult['signature']['signed'] ?? false) && 
-                         ($verificationResult['signature']['valid'] ?? false);
         
-        $matched = $metadataMatch && $pdfHashMatch && $signatureValid;
+        // signature_valid is reported separately — do not gate matched on it
+        // because certificates issued before signing was enabled will never
+        // have a valid signature but are still legitimate records.
+        $matched = $metadataMatch && $pdfHashMatch;
         
         $differences = [
             'matched' => $matched, // Boolean: true if everything matches
@@ -446,7 +459,8 @@ class PublicVerificationService {
         
         // Overall explanation
         if ($matched) {
-            $differences['explanation'] = 'The uploaded PDF matches our stored certificate in all aspects. All metadata fields, PDF content, and digital signature are correct.';
+            $differences['explanation'] = 'The uploaded PDF matches our stored certificate. '
+                . 'All metadata fields and PDF content are identical to our records.';
         } else {
             $differences['explanation'] = 'The uploaded PDF has differences compared to our stored certificate. ' . 
                                         implode(' ', array_slice($differences['uploaded_pdf_differences'], 0, 3));

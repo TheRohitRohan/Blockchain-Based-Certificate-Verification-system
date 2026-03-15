@@ -30,118 +30,139 @@ class VerificationEngine {
     /**
      * Complete verification flow for uploaded PDF
      */
-    public function verifyUploadedPDF(string $pdfPath): array {
+    public function verifyUploadedPDF(string $pdfPath): array
+    {
         try {
             // Step 1: Verify digital signature
             $signatureResult = $this->signatureService->verifySignature($pdfPath);
-            
-            // Step 2: Extract metadata
+
+            // Step 2: Extract metadata from PDF
             $extractedMetadata = $this->pdfService->extractMetadata($pdfPath);
-            
+
             if (!$extractedMetadata) {
-                // Fallback: Extract text and try to parse
-                $text = $this->pdfService->extractText($pdfPath);
+                // Fallback: try to find cert ID from visible text
+                $text              = $this->pdfService->extractText($pdfPath);
                 $extractedMetadata = $this->parseMetadataFromText($text);
             }
-            
+
             if (!$extractedMetadata || !isset($extractedMetadata['certificate_id'])) {
                 return [
-                    'valid' => false,
-                    'status' => 'invalid',
-                    'message' => 'Could not extract certificate metadata from PDF',
-                    'signature' => $signatureResult
+                    'valid'     => false,
+                    'status'    => 'invalid',
+                    'message'   => 'Could not extract certificate metadata from PDF. '
+                                 . 'The PDF may not have been issued by this system.',
+                    'signature' => $signatureResult,
                 ];
             }
-            
+
             $certificateId = $extractedMetadata['certificate_id'];
-            
-            // Check cache first
-            $cacheKey = "verify:{$certificateId}";
-            $cached = $this->cache->get($cacheKey);
-            if ($cached !== null) {
-                return $cached;
-            }
-            
+
+            // NOTE: No cache read here — every uploaded PDF must be freshly verified.
+            // Caching here would allow a tampered PDF to return a stale "valid" result.
+
             // Step 3: Fetch database record
             $dbRecord = $this->getCertificateRecord($certificateId);
-            
+
             if (!$dbRecord) {
                 $result = [
-                    'valid' => false,
-                    'status' => 'not_found',
-                    'message' => 'Certificate not found in database',
-                    'signature' => $signatureResult,
-                    'extracted_metadata' => $extractedMetadata
+                    'valid'              => false,
+                    'status'             => 'not_found',
+                    'message'            => 'Certificate not found in database',
+                    'signature'          => $signatureResult,
+                    'extracted_metadata' => $extractedMetadata,
                 ];
-                $this->cache->set($cacheKey, $result, $this->config['cache']['verification_ttl'] ?? 3600);
                 $this->logVerification($certificateId, 'not_found', 'upload', $result);
                 return $result;
             }
-            
-            // Step 4: Compare metadata
+
+            // Step 4: Check revocation
+            $isRevoked = ($dbRecord['status'] === 'revoked' || ($dbRecord['is_revoked'] ?? false));
+            if ($isRevoked) {
+                $result = [
+                    'valid'     => false,
+                    'status'    => 'revoked',
+                    'message'   => 'Certificate has been revoked',
+                    'signature' => $signatureResult,
+                    'certificate' => $this->sanitizeDbRecord($dbRecord),
+                ];
+                $this->logVerification($certificateId, 'revoked', 'upload', $result);
+                return $result;
+            }
+
+            // Step 5: Compare metadata field by field
             $dbMetadata = $this->metadataService->buildMetadata([
-                'certificate_id' => $dbRecord['certificate_id'],
-                'student_id' => $dbRecord['student_id'] ?? '',
-                'student_name' => $dbRecord['student_name'] ?? '',
-                'course_name' => $dbRecord['course_name'],
-                'degree_type' => $dbRecord['degree_type'] ?? '',
-                'issue_date' => $dbRecord['issue_date'],
+                'certificate_id'  => $dbRecord['certificate_id'],
+                'student_id'      => $dbRecord['student_id']      ?? '',
+                'student_name'    => $dbRecord['student_name']    ?? '',
+                'course_name'     => $dbRecord['course_name'],
+                'degree_type'     => $dbRecord['degree_type']     ?? '',
+                'issue_date'      => $dbRecord['issue_date'],
                 'university_code' => $dbRecord['university_code'] ?? '',
-                'university_name' => $dbRecord['university_name'] ?? ''
+                'university_name' => $dbRecord['university_name'] ?? '',
             ]);
-            
             $comparison = $this->metadataService->compareMetadata($dbMetadata, $extractedMetadata);
-            
-            // Step 5: Calculate PDF hash and compare
-            $pdfHash = $this->pdfService->calculatePDFHash($pdfPath);
+
+            // Step 6: PDF binary hash check
+            $pdfHash      = $this->pdfService->calculatePDFHash($pdfPath);
             $pdfHashMatch = ($pdfHash === $dbRecord['pdf_hash']);
-            
-            // Step 6: Verify blockchain with caching
+
+            // Step 7: Blockchain verification (cached)
             $blockchainValid = false;
             if (!empty($dbRecord['onchain_hash'])) {
-                $blockchainValid = $this->verifyBlockchainCached(
-                    $certificateId,
-                    $dbRecord['onchain_hash']
-                );
+                $blockchainValid = $this->verifyBlockchainCached($certificateId, $dbRecord['onchain_hash']);
             }
-            
-            // Step 7: Check revocation status
-            $isRevoked = ($dbRecord['status'] === 'revoked' || $dbRecord['is_revoked'] ?? false);
-            
-            // Determine final result
-            $isValid = !$isRevoked && 
-                      $comparison['matches'] && 
-                      $pdfHashMatch && 
-                      $blockchainValid &&
-                      $signatureResult['signed'];
-            
+
+            // Step 8: Determine overall validity
+            // Signature is required if the DB record says it was signed (signature_status = 1).
+            // If the certificate was created without signing (signature_status = 0), we do not
+            // gate validity on it — otherwise all legacy/unsigned certs would always fail.
+            $signatureRequired = (bool)($dbRecord['signature_status'] ?? false);
+            $signatureOk       = $signatureResult['valid'] ?? false;
+
+            $isValid = !$isRevoked
+                    && $comparison['matches']
+                    && $pdfHashMatch
+                    && $blockchainValid
+                    && (!$signatureRequired || $signatureOk);
+
+            $status = $isValid ? 'valid' : 'invalid';
+
             $result = [
-                'valid' => $isValid,
-                'status' => $isRevoked ? 'revoked' : ($isValid ? 'valid' : 'invalid'),
-                'message' => $this->getVerificationMessage($isValid, $isRevoked, $comparison, $pdfHashMatch, $blockchainValid),
-                'signature' => $signatureResult,
-                'metadata_match' => $comparison['matches'],
+                'valid'                => $isValid,
+                'status'               => $status,
+                'message'              => $this->getVerificationMessage(
+                                            $isValid, false, $comparison,
+                                            $pdfHashMatch, $blockchainValid
+                                          ),
+                'checks'               => [
+                    'metadata_match'   => $comparison['matches'],
+                    'pdf_hash_match'   => $pdfHashMatch,
+                    'blockchain_valid' => $blockchainValid,
+                    'signature_valid'  => $signatureOk,
+                    'signature_required' => $signatureRequired,
+                    'not_revoked'      => true,
+                ],
                 'metadata_differences' => $comparison['differences'] ?? [],
-                'pdf_hash_match' => $pdfHashMatch,
-                'blockchain_valid' => $blockchainValid,
-                'certificate' => $dbRecord,
-                'extracted_metadata' => $extractedMetadata
+                'signature'            => $signatureResult,
+                'pdf_hash_uploaded'    => $pdfHash,
+                'pdf_hash_stored'      => $dbRecord['pdf_hash'],
+                'blockchain_valid'     => $blockchainValid,
+                'certificate'          => $this->sanitizeDbRecord($dbRecord),
+                'extracted_metadata'   => $extractedMetadata,
             ];
-            
-            // Cache result
-            $this->cache->set($cacheKey, $result, 3600);
-            
-            // Log verification
-            $this->logVerification($certificateId, $result['status'], 'upload', $result);
-            
+
+            // Cache the RESULT (not bypassed) so ID-only verification can reuse it
+            $this->cache->set("verify:{$certificateId}", $result, 3600);
+            $this->logVerification($certificateId, $status, 'upload', $result);
+
             return $result;
-            
+
         } catch (\Exception $e) {
             error_log("Verification failed: " . $e->getMessage());
             return [
-                'valid' => false,
-                'status' => 'error',
-                'message' => 'Verification error: ' . $e->getMessage()
+                'valid'   => false,
+                'status'  => 'error',
+                'message' => 'Verification error: ' . $e->getMessage(),
             ];
         }
     }
@@ -282,6 +303,21 @@ class VerificationEngine {
     }
     
     /**
+     * Strip internal fields before returning DB record to public callers.
+     * Removes raw hashes, internal IDs, and other fields not needed in API responses.
+     */
+    private function sanitizeDbRecord(array $record): array
+    {
+        $remove = ['metadata_json', 'pdf_hash', 'metadata_hash', 'onchain_hash',
+                   'block_number', 'chain_id', 'schema_version', 'revoked_by',
+                   'original_is_revoked', 'id'];
+        foreach ($remove as $key) {
+            unset($record[$key]);
+        }
+        return $record;
+    }
+    
+    /**
      * Get certificate record from database
      */
     private function getCertificateRecord(string $certificateId): ?array {
@@ -320,7 +356,8 @@ class VerificationEngine {
             WHERE c.certificate_id = ?
         ");
         $stmt->execute([$certificateId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result !== false ? $result : null;
     }
     
     /**
@@ -339,7 +376,8 @@ class VerificationEngine {
             WHERE c.certificate_id = ?
         ");
         $stmt->execute([$certificateId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result !== false ? $result : null;
     }
     
     /**

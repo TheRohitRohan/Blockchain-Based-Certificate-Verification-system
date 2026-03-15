@@ -3,8 +3,24 @@
 // Load composer autoloader first
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// Bootstrap phpdotenv (safeLoad does not throw if .env is missing)
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->safeLoad();
+
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
+
+// FIX 14A: Origin-aware CORS instead of wildcard
+$allowedOrigins = array_values(array_filter([
+    'http://localhost:3000',
+    getenv('FRONTEND_URL') ?: '',
+]));
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($requestOrigin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
+} else {
+    header('Access-Control-Allow-Origin: ' . ($allowedOrigins[0] ?? '*'));
+}
+header('Vary: Origin');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
@@ -17,28 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Simple autoloader since we're not using Composer extensively
-spl_autoload_register(function ($class) {
-    $prefix = 'App\\';
-    $base_dir = __DIR__ . '/../src/';
-    
-    $len = strlen($prefix);
-    if (strncmp($prefix, $class, $len) !== 0) {
-        return;
-    }
-    
-    $relative_class = substr($class, $len);
-    $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
-    
-    if (file_exists($file)) {
-        require $file;
-    }
-});
+
 
 use App\Auth;
 use App\CertificateService;
 use App\Database;
-use App\PDFGenerator;
 use App\PublicVerificationService;
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -291,18 +290,13 @@ switch ($path) {
             }
             
             try {
-                $pdfGenerator = new PDFGenerator();
-                
-                // Check if PDF already exists
-                $existingPDF = $pdfGenerator->getPDFPath($certificateId);
-                
-                if ($existingPDF && file_exists($existingPDF)) {
-                    // Serve existing PDF
-                    $filename = basename($existingPDF);
-                } else {
-                    // Generate new PDF
-                    $filename = $pdfGenerator->generateCertificatePDF($certificateId);
-                    $existingPDF = $pdfGenerator->getPDFPath($certificateId);
+                // FIX 3C: Use PDFService instead of deleted generator
+                $pdfSvc = new \App\PDFService();
+                $existingPDF = $pdfSvc->getPDFPath($certificateId);
+
+                if (!$existingPDF || !file_exists($existingPDF)) {
+                    $pdfSvc->generateCertificatePDF($certificateId, []);
+                    $existingPDF = $pdfSvc->getPDFPath($certificateId);
                 }
                 
                 if (!$existingPDF || !file_exists($existingPDF)) {
@@ -312,6 +306,7 @@ switch ($path) {
                 }
                 
                 // Serve PDF file
+                $filename = basename($existingPDF);
                 header('Content-Type: application/pdf');
                 header('Content-Disposition: attachment; filename="' . $filename . '"');
                 header('Content-Length: ' . filesize($existingPDF));
@@ -393,7 +388,14 @@ switch ($path) {
             
             $auth->register($userData);
             $newUser = $auth->login($data['email'], $data['password']);
-            
+
+            // FIX 14B: Null-check — user registered but login failed
+            if (!$newUser) {
+                http_response_code(500);
+                echo json_encode(['error' => 'User registered but login failed. Please log in manually.']);
+                break;
+            }
+
             // Create student record
             $db = Database::getInstance()->getConnection();
             
@@ -423,6 +425,141 @@ switch ($path) {
             ]);
             
             echo json_encode(['success' => $result]);
+        }
+        break;
+
+    case '/certificates/get':
+        if ($method === 'GET') {
+            $certificateId = $_GET['certificate_id'] ?? null;
+            if (!$certificateId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'certificate_id required']);
+                break;
+            }
+            try {
+                $cert = $certService->getCertificate($certificateId);
+                if (!$cert) {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'Certificate not found']);
+                } else {
+                    echo json_encode(['success' => true, 'certificate' => $cert]);
+                }
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to retrieve certificate']);
+            }
+        }
+        break;
+
+    case '/certificates/update':
+        if ($method === 'PUT' || $method === 'POST') {
+            $user = requireAuth($token, $auth, ['university', 'admin']);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $certificateId = $data['certificate_id'] ?? null;
+            
+            if (!$certificateId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'certificate_id required']);
+                break;
+            }
+            
+            try {
+                $certService->updateCertificate($certificateId, $data, $user['university_id'] ?? null);
+                echo json_encode(['success' => true, 'message' => 'Certificate updated']);
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to update certificate: ' . $e->getMessage()]);
+            }
+        }
+        break;
+
+    case '/certificates/delete':
+        if ($method === 'DELETE' || $method === 'POST') {
+            $user = requireAuth($token, $auth, ['admin']);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $certificateId = $data['certificate_id'] ?? null;
+            
+            if (!$certificateId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'certificate_id required']);
+                break;
+            }
+            
+            try {
+                $certService->deleteCertificate($certificateId);
+                echo json_encode(['success' => true, 'message' => 'Certificate deleted']);
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to delete certificate']);
+            }
+        }
+        break;
+
+    case '/certificates/list':
+        if ($method === 'GET') {
+            $user = requireAuth($token, $auth, ['university', 'admin']);
+            
+            $filters = [];
+            $page = (int)($_GET['page'] ?? 1);
+            $perPage = (int)($_GET['per_page'] ?? 10);
+            
+            // Auto-scope to university if role is university
+            if ($user['role'] === 'university') {
+                $filters['university_id'] = $user['university_id'];
+            } elseif (isset($_GET['university_id'])) {
+                $filters['university_id'] = $_GET['university_id'];
+            }
+            
+            if (isset($_GET['student_id'])) {
+                $filters['student_id'] = $_GET['student_id'];
+            }
+            if (isset($_GET['status'])) {
+                $filters['status'] = $_GET['status'];
+            }
+            if (isset($_GET['course_name'])) {
+                $filters['course_name'] = $_GET['course_name'];
+            }
+            
+            try {
+                $result = $certService->listCertificates($filters, $page, $perPage);
+                echo json_encode(['success' => true, 'certificates' => $result['data'], 'total' => $result['total'], 'page' => $page]);
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to list certificates']);
+            }
+        }
+        break;
+
+    case '/universities/generate-key':
+        if ($method === 'POST') {
+            $user = requireAuth($token, $auth, ['admin']);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $universityId = $data['university_id'] ?? null;
+            
+            if (!$universityId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'university_id required']);
+                break;
+            }
+            
+            try {
+                $db = Database::getInstance()->getConnection();
+                $stmt = $db->prepare("SELECT name FROM universities WHERE id = ?");
+                $stmt->execute([$universityId]);
+                $university = $stmt->fetch();
+                
+                if (!$university) {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'University not found']);
+                    break;
+                }
+                
+                $signatureService->generateUniversityKeyPair($universityId, $university['name']);
+                echo json_encode(['success' => true, 'message' => 'Key pair generated successfully']);
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to generate key pair: ' . $e->getMessage()]);
+            }
         }
         break;
 

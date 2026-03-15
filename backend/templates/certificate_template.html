@@ -2,133 +2,265 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Certificate of Achievement</title>
+    <title>Certificate of Completion</title>
     <style>
+        * { margin: 0; padding: 0; }
+
         body {
-            font-family: 'Georgia', serif;
-            color: #222;
+            font-family: 'Georgia', 'Times New Roman', serif;
+            color: #1a1a2e;
+            background: #ffffff;
             margin: 0;
-            padding: 10mm; /* Using body padding instead of @page margin for safety */
-        }
-        /* Outer Border applied directly to body/page using mPDF margins */
-        .border {
-            border: 3px solid #1e3a8a;
-            border-radius: 10px;
-            padding: 5mm;
-            /* Explicit calculation: A4 height (297) - 20 (body padding) - 10 (border padding) - 6 (borders) = 261mm */
-            height: 260mm; 
-        }
-        .inner-border {
-            border: 1px solid #93c5fd;
-            border-radius: 8px;
-            /* height: 100%; <- THIS triggers infinite mPDF page loops */
-            padding: 5mm;
-            text-align: center;
+            padding: 0;
         }
 
-        .header { margin-bottom: 10mm; }
-        .university-logo {
-            width: 50%;
-            margin: 0 auto;
-            border: 2px dashed #d1d5db;
-            color: #6b7280;
-            font-size: 12px;
-            background: #f9fafb;
-            padding: 10mm 0;
-            text-align: center;
-        }
-
-        h1 { font-size: 36px; color: #1e3a8a; margin: 5mm 0; text-transform: uppercase; letter-spacing: 2px; }
-        h2 { font-size: 24px; color: #3b82f6; margin: 0; font-weight: normal; }
-
-        .certification-text { font-size: 16px; color: #374151; margin-top: 15mm; margin-bottom: 5mm; }
-        .student-name {
-            font-size: 32px;
-            color: #1f2937;
-            padding-bottom: 5mm;
-            font-weight: bold;
-            border-bottom: 2px solid #fbbf24;
-            display: inline-block;
-            width: 80%;
-            margin: 0 auto;
-        }
-
-        .course-info { font-size: 18px; color: #4b5563; margin-top: 10mm; }
-        .course-name { font-size: 24px; color: #059669; font-weight: bold; margin-top: 5mm; }
-        .degree-type { font-size: 20px; color: #7c3aed; font-style: italic; margin-top: 5mm; }
-
-        .footer {
+        /* Full page height — 210mm for A4-L. The outer table stretches
+           the content area so bottom bars always sit at the page edge. */
+        .page {
             width: 100%;
-            margin-top: 15mm;
+            height: 210mm;
         }
-        .footer table { 
-            width: 100%; 
-            table-layout: fixed;
-        }
-        .footer td { vertical-align: top; }
 
-        .details { text-align: left; font-size: 11px; color: #6b7280; line-height: 1.4; padding-right: 5mm; }
-        .details p { margin: 2mm 0; }
-        .hash-wrap {
-            max-width: 100%;
-            word-wrap: break-word;
-            word-break: break-all;
+        /* Outer layout table fills the full page height */
+        .layout-table {
+            width: 100%;
+            height: 210mm;
+            border-collapse: collapse;
+        }
+
+        .layout-top {
+            height: 7mm;
+            padding: 0;
+        }
+
+        /* Content row expands to fill remaining height */
+        .layout-content {
+            padding: 0;
+            vertical-align: top;
+        }
+
+        .layout-bottom {
+            height: 7mm;
+            padding: 0;
+        }
+
+        /* No side borders — they caused width calculation issues with mPDF */
+        .inner {
+            padding: 5mm 10mm 4mm 10mm;
+        }
+
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .header-table td {
+            padding: 0 0 3mm 0;
+            vertical-align: middle;
+            border-bottom: 0.5pt solid #dbeafe;
+        }
+
+        /* Logo cell: fixed narrow width, image strictly constrained */
+        .col-logo {
+            width: 22mm;
+            text-align: left;
+        }
+
+        /* Explicit px dimensions override any intrinsic image size in mPDF */
+        .col-logo img {
+            width: 20mm;
+            height: 20mm;
+            max-width: 20mm;
+            max-height: 20mm;
+        }
+
+        .col-title {
+            text-align: center;
+            padding: 0 4mm 3mm 4mm;
+        }
+
+        .col-qr {
+            width: 28mm;
+            text-align: right;
+        }
+
+        .university-name {
+            font-size: 9pt;
+            color: #1e3a8a;
+            font-weight: bold;
+            letter-spacing: 1.5pt;
+            text-transform: uppercase;
+            margin-bottom: 1.5mm;
+        }
+
+        .cert-title {
+            font-size: 20pt;
+            color: #1e3a8a;
+            font-weight: bold;
+            letter-spacing: 3pt;
+            text-transform: uppercase;
+            line-height: 1.1;
+        }
+
+        .qr-box {
+            width: 26mm;
+            height: 26mm;
+            border: 1.5pt solid #1e3a8a;
+            padding: 0.5mm;
+            background: #ffffff;
+        }
+
+        .qr-box img {
+            width: 25mm;
+            height: 25mm;
             display: block;
         }
 
-        .qr-section { text-align: right; }
-        .qr-wrapper {
-            width: 35mm;
-            height: 35mm;
-            border: 2px dashed #d1d5db;
-            background: #f9fafb;
-            display: inline-block;
-            padding: 2mm;
+        .qr-label {
+            font-size: 6pt;
+            color: #6b7280;
+            text-align: right;
+            margin-top: 1mm;
+            font-style: italic;
         }
-        .qr-wrapper img { width: 100%; height: auto; }
-        .verification-text { font-size: 10px; color: #9ca3af; margin-top: 2mm; text-align: right; word-break: break-all; }
 
+        .body-section {
+            text-align: center;
+            padding: 4mm 0 3mm 0;
+        }
+
+        .presented-to {
+            font-size: 9pt;
+            color: #6b7280;
+            font-style: italic;
+            letter-spacing: 1pt;
+            margin-bottom: 2mm;
+        }
+
+        .name-rule-top {
+            border-top: 2pt solid #b8860b;
+            margin-bottom: 1.5mm;
+        }
+
+        .student-name {
+            font-size: 26pt;
+            color: #1a1a2e;
+            font-weight: bold;
+            line-height: 1.15;
+            padding: 0 20mm;
+        }
+
+        .name-rule-bottom {
+            border-bottom: 2pt solid #b8860b;
+            margin-top: 1.5mm;
+            margin-bottom: 3mm;
+        }
+
+        .completion-text {
+            font-size: 9pt;
+            color: #4b5563;
+            font-style: italic;
+            margin-bottom: 1.5mm;
+        }
+
+        .course-name {
+            font-size: 14pt;
+            color: #1e3a8a;
+            font-weight: bold;
+            margin-bottom: 1mm;
+            line-height: 1.2;
+        }
+
+        .degree-type {
+            font-size: 10pt;
+            color: #7c3aed;
+            font-style: italic;
+        }
+
+        /* Footer: just the date + cert ID centred, no signature columns */
+        .footer-section {
+            text-align: center;
+            border-top: 0.5pt solid #dbeafe;
+            padding-top: 3mm;
+            margin-top: 3mm;
+        }
+
+        .issue-date {
+            font-size: 8.5pt;
+            color: #374151;
+            font-family: Arial, sans-serif;
+        }
+
+        .issue-date strong {
+            color: #1e3a8a;
+        }
+
+        .cert-note {
+            font-size: 7pt;
+            color: #6b7280;
+            margin-top: 1.5mm;
+            font-family: Arial, sans-serif;
+        }
+
+        .cert-note strong {
+            color: #374151;
+        }
     </style>
 </head>
 <body>
-    <div class="border">
-        <div class="inner-border">
-            <div class="header">
-                <div class="university-logo">UNIVERSITY LOGO</div>
-            </div>
+<div class="page">
+<table class="layout-table">
+    <tr>
+        <td class="layout-top" style="background:#b8860b;">&nbsp;</td>
+    </tr>
+    <tr>
+        <td style="height:2mm;background:#1e3a8a;padding:0;">&nbsp;</td>
+    </tr>
+    <tr>
+        <td class="layout-content">
+            <div class="inner">
 
-            <h2>{{UNIVERSITY_NAME}}</h2>
-            <h1>Certificate of Completion</h1>
-
-            <div class="certification-text">This is to certify that</div>
-            <div class="student-name">{{STUDENT_NAME}}</div>
-            
-            <div class="course-info">has successfully completed the course</div>
-            <div class="course-name">{{COURSE_NAME}}</div>
-            <div class="degree-type">{{DEGREE_TYPE}}</div>
-
-            <div class="footer">
-                <table>
+                <table class="header-table">
                     <tr>
-                        <td class="details" style="width: 55%;">
-                            <p><strong>Certificate ID:</strong> {{CERTIFICATE_ID}}</p>
-                            <p><strong>Issue Date:</strong> {{ISSUE_DATE}}</p>
-                            <p><strong>Blockchain Hash:</strong> <span class="hash-wrap">{{CERTIFICATE_HASH}}</span></p>
-                            <p><strong>Transaction:</strong> <span class="hash-wrap">{{BLOCKCHAIN_TX_HASH}}</span></p>
+                        <td class="col-logo">
+                            <img src="storage/assets/university-logo.png" width="76" height="76" alt="">
                         </td>
-                        <td class="qr-section" style="width: 45%;">
-                            <div class="qr-wrapper">
-                                {{QR_CODE}}
-                            </div>
-                            <div class="verification-text">
-                                Scan to verify<br>
-                                {{VERIFICATION_URL}}
-                            </div>
+                        <td class="col-title">
+                            <div class="university-name">{{UNIVERSITY_NAME}}</div>
+                            <div class="cert-title">Certificate of Completion</div>
+                        </td>
+                        <td class="col-qr">
+                            <div class="qr-box">{{QR_CODE}}</div>
+                            <div class="qr-label">Scan to verify</div>
                         </td>
                     </tr>
                 </table>
+
+                <div class="body-section">
+                    <div class="presented-to">This is to certify that</div>
+                    <div class="name-rule-top"></div>
+                    <div class="student-name">{{STUDENT_NAME}}</div>
+                    <div class="name-rule-bottom"></div>
+                    <div class="completion-text">has successfully completed the course</div>
+                    <div class="course-name">{{COURSE_NAME}}</div>
+                    <div class="degree-type">{{DEGREE_TYPE}}</div>
+                </div>
+
+                <div class="footer-section">
+                    <div class="issue-date"><strong>Date of Issue:</strong> {{ISSUE_DATE}}</div>
+                    <div class="cert-note"><strong>Certificate ID:</strong> {{CERTIFICATE_ID}}</div>
+                </div>
+
             </div>
-        </div>
-    </div>
+        </td>
+    </tr>
+    <tr>
+        <td style="height:2mm;background:#1e3a8a;padding:0;">&nbsp;</td>
+    </tr>
+    <tr>
+        <td class="layout-bottom" style="background:#b8860b;">&nbsp;</td>
+    </tr>
+</table>
+</div>
 </body>
 </html>
