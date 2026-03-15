@@ -1,9 +1,16 @@
 <?php
 
+// Load composer autoloader first
+require_once __DIR__ . '/../vendor/autoload.php';
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+if (extension_loaded('zlib')) {
+    ini_set('zlib.output_compression', 4096);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -32,6 +39,7 @@ use App\Auth;
 use App\CertificateService;
 use App\Database;
 use App\PDFGenerator;
+use App\PublicVerificationService;
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_SERVER['REQUEST_URI'] ?? '/';
@@ -113,14 +121,117 @@ switch ($path) {
         }
         break;
 
+    case '/certificates/upload':
+        if ($method === 'POST') {
+            $user = requireAuth($token, $auth, ['university', 'admin']);
+            
+            if (!isset($_FILES['certificate']) || $_FILES['certificate']['error'] !== UPLOAD_ERR_OK) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'No file uploaded or upload error']);
+                break;
+            }
+            
+            $universityId = $user['university_id'] ?? null;
+            if (!$universityId) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'University ID required']);
+                break;
+            }
+            
+            $result = $certService->uploadCertificate($_FILES['certificate'], $universityId);
+            echo json_encode($result);
+        }
+        break;
+
     case '/certificates/verify':
         if ($method === 'POST') {
             $data = json_decode(file_get_contents('php://input'), true);
-            $result = $certService->verifyCertificate(
-                $data['certificate_id'] ?? '',
-                $data['certificate_hash'] ?? null
-            );
+            
+            // Check if PDF file is uploaded
+            if (isset($_FILES['certificate']) && $_FILES['certificate']['error'] === UPLOAD_ERR_OK) {
+                // Verify uploaded PDF
+                $result = $certService->verifyUploadedPDF($_FILES['certificate']);
+            } else {
+                // Verify by certificate ID
+                $result = $certService->verifyCertificate(
+                    $data['certificate_id'] ?? '',
+                    $data['certificate_hash'] ?? null
+                );
+            }
+            
             echo json_encode($result);
+        }
+        break;
+
+    // Public verification endpoint (no authentication required)
+    case '/public/verify':
+        if ($method === 'GET' || $method === 'POST') {
+            $publicVerification = new PublicVerificationService();
+            
+            // Get certificate ID from query, POST data, or JSON body
+            $certificateId = $_GET['certificate_id'] ?? 
+                           ($_POST['certificate_id'] ?? 
+                           (json_decode(file_get_contents('php://input'), true)['certificate_id'] ?? null));
+            
+            // Check for uploaded file
+            $uploadedFile = null;
+            if (isset($_FILES['certificate']) && $_FILES['certificate']['error'] === UPLOAD_ERR_OK) {
+                $uploadedFile = $_FILES['certificate'];
+            }
+            
+            // Perform verification
+            $result = $publicVerification->verifyPublic($certificateId, $uploadedFile);
+            
+            echo json_encode($result, JSON_PRETTY_PRINT);
+        }
+        break;
+
+    // Public certificate download endpoint
+    case '/public/certificate/download':
+        if ($method === 'GET') {
+            $certificateId = $_GET['certificate_id'] ?? '';
+            
+            if (empty($certificateId)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Certificate ID required']);
+                exit;
+            }
+            
+            try {
+                $publicVerification = new PublicVerificationService();
+                $pdfData = $publicVerification->getStoredCertificatePDF($certificateId);
+                
+                if (!$pdfData) {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'Certificate PDF not found']);
+                    exit;
+                }
+                
+                // Check if view mode (inline) or download mode
+                $viewMode = isset($_GET['view']) && $_GET['view'] == '1';
+                
+                // Decode base64 PDF
+                $pdfContent = base64_decode($pdfData['base64']);
+                
+                // Set headers
+                header('Content-Type: application/pdf');
+                header('Content-Length: ' . strlen($pdfContent));
+                
+                if ($viewMode) {
+                    header('Content-Disposition: inline; filename="' . basename($pdfData['filename']) . '"');
+                } else {
+                    header('Content-Disposition: attachment; filename="' . basename($pdfData['filename']) . '"');
+                }
+                
+                header('Cache-Control: public, max-age=3600');
+                
+                echo $pdfContent;
+                exit;
+                
+            } catch (\Exception $e) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to retrieve certificate: ' . $e->getMessage()]);
+            }
         }
         break;
 
@@ -159,9 +270,9 @@ switch ($path) {
         }
         break;
 
-case '/certificates/revoke':
+    case '/certificates/revoke':
         if ($method === 'POST') {
-            $user = requireAuth($token, $auth, ['admin']);
+            $user = requireAuth($token, $auth, ['admin', 'university']);
             $data = json_decode(file_get_contents('php://input'), true);
             $result = $certService->revokeCertificate($data['certificate_id'], $user['user_id']);
             echo json_encode(['success' => $result]);
@@ -285,6 +396,21 @@ case '/certificates/revoke':
             
             // Create student record
             $db = Database::getInstance()->getConnection();
+            
+            // For admin, require university_id in request; for university, use their own
+            $universityId = null;
+            if ($user['role'] === 'admin') {
+                $universityId = $data['university_id'] ?? null;
+            } else {
+                $universityId = $user['university_id'] ?? null;
+            }
+            
+            if (!$universityId) {
+                http_response_code(400);
+                echo json_encode(['error' => 'University ID required']);
+                break;
+            }
+            
             $stmt = $db->prepare("
                 INSERT INTO students (user_id, student_id, university_id, enrollment_date)
                 VALUES (?, ?, ?, ?)
@@ -292,7 +418,7 @@ case '/certificates/revoke':
             $result = $stmt->execute([
                 $newUser['id'],
                 $data['student_id'],
-                $user['university_id'] ?? $data['university_id'],
+                $universityId,
                 $data['enrollment_date'] ?? date('Y-m-d')
             ]);
             

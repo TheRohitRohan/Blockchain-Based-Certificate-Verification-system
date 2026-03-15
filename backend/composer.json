@@ -8,8 +8,18 @@
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
         "ext-curl": "*",
+        "ext-openssl": "*",
+        "ext-gd": "*",
         "web3p/web3.php": "^0.3.2",
-        "mpdf/mpdf": "^8.2"
+        "mpdf/mpdf": "^8.2",
+        "tecnickcom/tcpdf": "^6.6",
+        "setasign/fpdi": "^2.6",
+        "smalot/pdfparser": "^2.0",
+        "predis/predis": "^2.0",
+        "vlucas/phpdotenv": "^5.5",
+        "kornrunner/keccak": "^1.1",
+        "endroid/qr-code": "^5.0",
+        "setasign/fpdf": "^1.8"
     },
     "autoload": {
         "psr-4": {

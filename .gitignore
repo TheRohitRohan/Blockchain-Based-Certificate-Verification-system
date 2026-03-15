@@ -9,3 +9,9 @@ config.php
 *.sqlite
 *.db
 
+# Opencode
+opencode/
+
+# Session files
+session-ses_*.md
+

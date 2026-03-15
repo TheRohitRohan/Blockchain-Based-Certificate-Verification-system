@@ -69,8 +69,13 @@ class PDFGenerator {
                 'margin_footer' => 0,
             ]);
             
-            // Write HTML to PDF
-            $mpdf->WriteHTML($htmlContent, HTMLParserMode::HTML_BODY);
+            [$css, $bodyHtml] = $this->splitHtmlForMpdf($htmlContent);
+
+            if ($css !== '') {
+                $mpdf->WriteHTML($css, HTMLParserMode::HEADER_CSS);
+            }
+
+            $mpdf->WriteHTML($bodyHtml, HTMLParserMode::HTML_BODY);
             
             // Generate filename
             $filename = $this->generateFileName($certificate);
@@ -143,6 +148,24 @@ class PDFGenerator {
         ];
 
         return str_replace(array_keys($replacements), array_values($replacements), $html);
+    }
+
+    /**
+     * mPDF handles embedded styles reliably when CSS is passed separately.
+     */
+    private function splitHtmlForMpdf(string $html): array {
+        $css = '';
+
+        if (preg_match_all('/<style\b[^>]*>(.*?)<\/style>/is', $html, $matches)) {
+            $css = trim(implode("\n", $matches[1]));
+            $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', $html);
+        }
+
+        if (preg_match('/<body\b[^>]*>(.*?)<\/body>/is', $html, $matches)) {
+            $html = $matches[1];
+        }
+
+        return [$css, trim($html)];
     }
     
     private function generateQRCode($certificate): string {
@@ -256,7 +279,7 @@ class PDFGenerator {
         }
     }
     
-    private function getPDFPath($certificateId): ?string {
+    public function getPDFPath($certificateId): ?string {
         $stmt = $this->db->prepare("
             SELECT pdf_path 
             FROM certificates 

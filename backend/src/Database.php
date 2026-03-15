@@ -15,10 +15,11 @@ class Database {
 
         try {
             $dsn = "mysql:host={$db['host']};dbname={$db['dbname']};charset={$db['charset']}";
-            $options = [
+        $options = [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_PERSISTENT => true,
             ];
 
             $this->connection = new PDO($dsn, $db['username'], $db['password'], $options);

@@ -2,298 +2,131 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate of Completion</title>
+    <title>Certificate of Achievement</title>
     <style>
-        @page {
-            size: A4;
-            margin: 0;
-        }
-        
         body {
             font-family: 'Georgia', serif;
+            color: #222;
             margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            padding: 10mm; /* Using body padding instead of @page margin for safety */
         }
-        
-        .certificate {
-            width: 210mm;
-            height: 297mm;
-            position: relative;
-            background: white;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
+        /* Outer Border applied directly to body/page using mPDF margins */
         .border {
-            position: absolute;
-            top: 15mm;
-            left: 15mm;
-            right: 15mm;
-            bottom: 15mm;
             border: 3px solid #1e3a8a;
             border-radius: 10px;
+            padding: 5mm;
+            /* Explicit calculation: A4 height (297) - 20 (body padding) - 10 (border padding) - 6 (borders) = 261mm */
+            height: 260mm; 
         }
-        
         .inner-border {
-            position: absolute;
-            top: 20mm;
-            left: 20mm;
-            right: 20mm;
-            bottom: 20mm;
             border: 1px solid #93c5fd;
             border-radius: 8px;
-        }
-        
-        .content {
-            position: absolute;
-            top: 30mm;
-            left: 30mm;
-            right: 30mm;
-            bottom: 30mm;
+            /* height: 100%; <- THIS triggers infinite mPDF page loops */
+            padding: 5mm;
             text-align: center;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
         }
-        
-        .header {
-            margin-bottom: 20mm;
-        }
-        
+
+        .header { margin-bottom: 10mm; }
         .university-logo {
-            width: 80mm;
-            height: 30mm;
+            width: 50%;
+            margin: 0 auto;
             border: 2px dashed #d1d5db;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 5mm;
             color: #6b7280;
             font-size: 12px;
             background: #f9fafb;
+            padding: 10mm 0;
+            text-align: center;
         }
-        
-        h1 {
-            font-size: 36px;
-            color: #1e3a8a;
-            margin: 5mm 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-weight: bold;
-        }
-        
-        h2 {
-            font-size: 24px;
-            color: #3b82f6;
-            margin: 5mm 0;
-            font-weight: normal;
-        }
-        
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-        
-        .certification-text {
-            font-size: 16px;
-            color: #374151;
-            margin-bottom: 10mm;
-            line-height: 1.6;
-        }
-        
+
+        h1 { font-size: 36px; color: #1e3a8a; margin: 5mm 0; text-transform: uppercase; letter-spacing: 2px; }
+        h2 { font-size: 24px; color: #3b82f6; margin: 0; font-weight: normal; }
+
+        .certification-text { font-size: 16px; color: #374151; margin-top: 15mm; margin-bottom: 5mm; }
         .student-name {
             font-size: 32px;
             color: #1f2937;
-            margin: 10mm 0;
+            padding-bottom: 5mm;
             font-weight: bold;
             border-bottom: 2px solid #fbbf24;
-            padding-bottom: 5mm;
             display: inline-block;
+            width: 80%;
+            margin: 0 auto;
         }
-        
-        .course-info {
-            font-size: 18px;
-            color: #4b5563;
-            margin: 8mm 0;
-            line-height: 1.8;
-        }
-        
-        .course-name {
-            font-size: 24px;
-            color: #059669;
-            font-weight: bold;
-            margin: 5mm 0;
-        }
-        
-        .degree-type {
-            font-size: 20px;
-            color: #7c3aed;
-            font-style: italic;
-            margin: 5mm 0;
-        }
-        
+
+        .course-info { font-size: 18px; color: #4b5563; margin-top: 10mm; }
+        .course-name { font-size: 24px; color: #059669; font-weight: bold; margin-top: 5mm; }
+        .degree-type { font-size: 20px; color: #7c3aed; font-style: italic; margin-top: 5mm; }
+
         .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            margin-top: 20mm;
+            width: 100%;
+            margin-top: 15mm;
         }
-        
-        .details {
-            text-align: left;
-            font-size: 12px;
-            color: #6b7280;
-            line-height: 1.4;
+        .footer table { 
+            width: 100%; 
+            table-layout: fixed;
         }
-        
-        .details p {
-            margin: 2mm 0;
-        }
-        
-        .qr-section {
-            text-align: center;
-        }
-        
-        .qr-code {
-            width: 40mm;
-            height: 40mm;
-            border: 2px dashed #d1d5db;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 3mm;
-            background: #f9fafb;
-        }
-        
-        .qr-text {
-            font-size: 10px;
-            color: #6b7280;
-            max-width: 40mm;
+        .footer td { vertical-align: top; }
+
+        .details { text-align: left; font-size: 11px; color: #6b7280; line-height: 1.4; padding-right: 5mm; }
+        .details p { margin: 2mm 0; }
+        .hash-wrap {
+            max-width: 100%;
             word-wrap: break-word;
+            word-break: break-all;
+            display: block;
         }
-        
-        .verification-text {
-            font-size: 11px;
-            color: #9ca3af;
-            margin-top: 2mm;
+
+        .qr-section { text-align: right; }
+        .qr-wrapper {
+            width: 35mm;
+            height: 35mm;
+            border: 2px dashed #d1d5db;
+            background: #f9fafb;
+            display: inline-block;
+            padding: 2mm;
         }
-        
-        .watermark {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 120px;
-            color: rgba(59, 130, 246, 0.1);
-            font-weight: bold;
-            pointer-events: none;
-            z-index: 1;
-        }
-        
-        .decorative-corner {
-            position: absolute;
-            width: 20mm;
-            height: 20mm;
-            border: 2px solid #fbbf24;
-        }
-        
-        .corner-tl {
-            top: 10mm;
-            left: 10mm;
-            border-right: none;
-            border-bottom: none;
-            border-top-left-radius: 10px;
-        }
-        
-        .corner-tr {
-            top: 10mm;
-            right: 10mm;
-            border-left: none;
-            border-bottom: none;
-            border-top-right-radius: 10px;
-        }
-        
-        .corner-bl {
-            bottom: 10mm;
-            left: 10mm;
-            border-right: none;
-            border-top: none;
-            border-bottom-left-radius: 10px;
-        }
-        
-        .corner-br {
-            bottom: 10mm;
-            right: 10mm;
-            border-left: none;
-            border-top: none;
-            border-bottom-right-radius: 10px;
-        }
+        .qr-wrapper img { width: 100%; height: auto; }
+        .verification-text { font-size: 10px; color: #9ca3af; margin-top: 2mm; text-align: right; word-break: break-all; }
+
     </style>
 </head>
 <body>
-    <div class="certificate">
-        <!-- Decorative elements -->
-        <div class="watermark">VERIFIED</div>
-        <div class="decorative-corner corner-tl"></div>
-        <div class="decorative-corner corner-tr"></div>
-        <div class="decorative-corner corner-bl"></div>
-        <div class="decorative-corner corner-br"></div>
-        
-        <!-- Main borders -->
-        <div class="border"></div>
-        <div class="inner-border"></div>
-        
-        <!-- Certificate content -->
-        <div class="content">
+    <div class="border">
+        <div class="inner-border">
             <div class="header">
-                <div class="university-logo">
-                    UNIVERSITY LOGO
-                </div>
-                <h2>{{UNIVERSITY_NAME}}</h2>
-                <h1>Certificate of Completion</h1>
+                <div class="university-logo">UNIVERSITY LOGO</div>
             </div>
+
+            <h2>{{UNIVERSITY_NAME}}</h2>
+            <h1>Certificate of Completion</h1>
+
+            <div class="certification-text">This is to certify that</div>
+            <div class="student-name">{{STUDENT_NAME}}</div>
             
-            <div class="main-content">
-                <p class="certification-text">
-                    This is to certify that
-                </p>
-                <div class="student-name">
-                    {{STUDENT_NAME}}
-                </div>
-                <div class="course-info">
-                    has successfully completed the course
-                    <div class="course-name">
-                        {{COURSE_NAME}}
-                    </div>
-                    <div class="degree-type">
-                        {{DEGREE_TYPE}}
-                    </div>
-                </div>
-            </div>
-            
+            <div class="course-info">has successfully completed the course</div>
+            <div class="course-name">{{COURSE_NAME}}</div>
+            <div class="degree-type">{{DEGREE_TYPE}}</div>
+
             <div class="footer">
-                <div class="details">
-                    <p><strong>Certificate ID:</strong> {{CERTIFICATE_ID}}</p>
-                    <p><strong>Issue Date:</strong> {{ISSUE_DATE}}</p>
-                    <p><strong>Blockchain Hash:</strong> {{CERTIFICATE_HASH}}</p>
-                    <p><strong>Transaction:</strong> {{BLOCKCHAIN_TX_HASH}}</p>
-                </div>
-                
-                <div class="qr-section">
-                    <div class="qr-code">
-                        {{QR_CODE}}
-                    </div>
-                    <div class="qr-text">
-                        Scan to verify
-                    </div>
-                    <div class="verification-text">
-                        {{VERIFICATION_URL}}
-                    </div>
-                </div>
+                <table>
+                    <tr>
+                        <td class="details" style="width: 55%;">
+                            <p><strong>Certificate ID:</strong> {{CERTIFICATE_ID}}</p>
+                            <p><strong>Issue Date:</strong> {{ISSUE_DATE}}</p>
+                            <p><strong>Blockchain Hash:</strong> <span class="hash-wrap">{{CERTIFICATE_HASH}}</span></p>
+                            <p><strong>Transaction:</strong> <span class="hash-wrap">{{BLOCKCHAIN_TX_HASH}}</span></p>
+                        </td>
+                        <td class="qr-section" style="width: 45%;">
+                            <div class="qr-wrapper">
+                                {{QR_CODE}}
+                            </div>
+                            <div class="verification-text">
+                                Scan to verify<br>
+                                {{VERIFICATION_URL}}
+                            </div>
+                        </td>
+                    </tr>
+                </table>
             </div>
         </div>
     </div>
