@@ -26,6 +26,9 @@
         "ext-gmp": "Required by kornrunner/ethereum-offline-raw-tx for real blockchain transaction signing",
         "kornrunner/ethereum-offline-raw-tx": "Required for real raw transaction signing on blockchain (needs ext-gmp)"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
     "autoload": {
         "psr-4": {
             "App\\": "src/"

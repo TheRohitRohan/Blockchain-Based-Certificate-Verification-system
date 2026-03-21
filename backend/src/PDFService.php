@@ -537,6 +537,13 @@ XMP;
 
             // If PDF already has an xpacket, replace the cert:metadata section
             if (strpos($binary, 'cert:metadata') !== false) {
+                // FIX 2: Validate PDF has proper RDF structure before modifying
+                // Regex replacement on binary PDF can corrupt the file if structure is unexpected
+                if (strpos($binary, '<rdf:RDF') === false) {
+                    error_log("PDF missing proper RDF structure - refusing to modify: {$pdfPath}");
+                    return false;
+                }
+                
                 $binary = preg_replace(
                     '/<cert:metadata>.*?<\/cert:metadata>/s',
                     '<cert:metadata><![CDATA[' . $metadataJson . ']]></cert:metadata>',

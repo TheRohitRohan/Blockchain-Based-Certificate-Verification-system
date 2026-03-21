@@ -177,6 +177,12 @@ class CertificateService {
                 throw new \Exception("Invalid file upload");
             }
 
+            // FIX 5: Validate file size (10MB limit) to prevent memory exhaustion/DoS
+            $maxFileSize = 10 * 1024 * 1024; // 10MB
+            if ($uploadedFile['size'] > $maxFileSize) {
+                throw new \Exception("File too large. Maximum allowed size is 10MB.");
+            }
+
             $fileInfo = pathinfo($uploadedFile['name']);
             if (strtolower($fileInfo['extension']) !== 'pdf') {
                 throw new \Exception("Only PDF files are allowed");
@@ -201,11 +207,27 @@ class CertificateService {
                     . "or visible text matching CERT-XXXXXXXX format.");
             }
 
+            // FIX 6: Sanitize certificate_id to prevent path injection
+            $metadata['certificate_id'] = preg_replace('/[^A-Za-z0-9\-]/', '', $metadata['certificate_id']);
+            if (empty($metadata['certificate_id'])) {
+                @unlink($tempPath);
+                throw new \Exception("Invalid certificate ID format");
+            }
+
             // ── Step 2: Validate against database ─────────────────────────────────
             $existing = $this->getCertificate($metadata['certificate_id']);
             if ($existing) {
                 @unlink($tempPath);
                 throw new \Exception("Certificate {$metadata['certificate_id']} already exists in the system.");
+            }
+
+            // FIX 3: Validate certificate ownership - university_code must match uploading university
+            $expectedUniversityCode = $this->getUniversityCode($universityId);
+            if (!empty($metadata['university_code']) && !empty($expectedUniversityCode)) {
+                if ($metadata['university_code'] !== $expectedUniversityCode) {
+                    @unlink($tempPath);
+                    throw new \Exception("Invalid certificate ownership: university code mismatch");
+                }
             }
 
             // Resolve student record from student_id in metadata
@@ -665,5 +687,18 @@ class CertificateService {
     
     private function getConfig() {
         return require __DIR__ . '/../config.php';
+    }
+    
+    /**
+     * Get university code by university ID
+     */
+    private function getUniversityCode($universityId) {
+        if (!$universityId) {
+            return null;
+        }
+        $stmt = $this->db->prepare("SELECT code FROM universities WHERE id = ?");
+        $stmt->execute([$universityId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result['code'] : null;
     }
 }

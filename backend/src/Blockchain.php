@@ -2,6 +2,7 @@
 
 namespace App;
 
+use phpseclib\Math\BigInteger;
 use Web3\Web3;
 use Web3\Contract;
 
@@ -78,7 +79,7 @@ class Blockchain
        BASIC CONNECTIVITY TEST
        ======================= */
 
-public function getCurrentBlock(): int
+    public function getCurrentBlock(): int
     {
         // If not connected, return mock block number
         if (!$this->isConnected) {
@@ -91,15 +92,8 @@ public function getCurrentBlock(): int
             if ($err !== null) {
                 throw new \Exception('Failed to connect to blockchain: ' . $err->getMessage());
             }
-    
-            // Handle BigInteger properly
-            if ($block instanceof \phpseclib\Math\BigInteger) {
-                $blockNumber = (int) $block->toString();
-            } elseif (is_string($block) && strpos($block, '0x') === 0) {
-                $blockNumber = hexdec($block);
-            } else {
-                $blockNumber = (int) $block;
-            }
+
+            $blockNumber = $this->normalizeRpcInteger($block);
         });
     
         return $blockNumber;
@@ -110,7 +104,7 @@ public function getCurrentBlock(): int
        SMART CONTRACT READS
        ======================= */
 
-public function getAdmin(): string
+    public function getAdmin(): string
     {
         $admin = '';
 
@@ -126,11 +120,13 @@ public function getAdmin(): string
         return $admin;
     }
 
-public function verifyCertificate(string $certificateId, string $certificateHash): bool
+    public function verifyCertificate(string $certificateId, string $certificateHash): bool
     {
-        // If not connected, return true (mock mode)
+        // FIX 1: If not connected, return false (fail-safe)
+        // Previously returned true which made all certificates valid when blockchain was down
         if (!$this->isConnected || !isset($this->contract)) {
-            return true;
+            error_log("Blockchain verification failed: not connected");
+            return false;
         }
 
         $isValid = false;
@@ -222,92 +218,97 @@ public function verifyCertificate(string $certificateId, string $certificateHash
 
             $txHash = null;
             $error = null;
-
-            // FIX 8: Raw transaction signing via kornrunner/ethereum-offline-raw-tx
-            //
-            // Step 1: Get the sender address
             $fromAddress = $this->getAddressFromPrivateKey($privateKey);
+            $transactionClass = 'kornrunner\\Ethereum\\Transaction';
 
-            // Step 2: Fetch nonce
-            $nonce = null;
-            $this->web3->eth->getTransactionCount(
-                $fromAddress,
-                'pending',
-                function ($err, $count) use (&$nonce) {
-                    if ($err === null) {
-                        if ($count instanceof \phpseclib\Math\BigInteger ||
-                            $count instanceof \phpseclib3\Math\BigInteger) {
-                            $nonce = '0x' . ltrim($count->toHex(), '0') ?: '0x0';
-                        } else {
-                            $nonce = $count;
+            if (class_exists($transactionClass)) {
+                $nonce = '0x0';
+                $this->web3->eth->getTransactionCount(
+                    $fromAddress,
+                    'pending',
+                    function ($err, $count) use (&$nonce) {
+                        if ($err === null && $count !== null) {
+                            $nonce = $this->normalizeRpcHexQuantity($count);
                         }
                     }
-                }
-            );
-            $nonce = $nonce ?? '0x0';
+                );
 
-            // Step 3: Fetch gas price (fallback: 20 Gwei for local Ganache)
-            $gasPrice = '0x4A817C800'; // 20 Gwei default
-            $this->web3->eth->gasPrice(function ($err, $price) use (&$gasPrice) {
-                if ($err === null && $price !== null) {
-                    if ($price instanceof \phpseclib\Math\BigInteger ||
-                        $price instanceof \phpseclib3\Math\BigInteger) {
-                        $gasPrice = '0x' . ltrim($price->toHex(), '0') ?: '0x0';
-                    } else {
-                        $gasPrice = $price;
+                $gasPrice = '0x4A817C800'; // 20 Gwei default
+                $this->web3->eth->gasPrice(function ($err, $price) use (&$gasPrice) {
+                    if ($err === null && $price !== null) {
+                        $gasPrice = $this->normalizeRpcHexQuantity($price);
                     }
-                }
-            });
+                });
 
-            // Step 4: Encode calldata via contract->getData()
-            $calldata = '';
-            $this->contract->getData(
-                'issueCertificate',
-                $certificateId,
-                $studentName,
-                $universityName,
-                $courseName,
-                $issueDate,
-                $certificateHash,
-                function ($err, $data) use (&$calldata, &$error) {
-                    if ($err !== null) {
-                        $error = 'getData failed: ' . $err->getMessage();
-                    } else {
-                        $calldata = $data;
+                $calldata = '';
+                $this->contract->getData(
+                    'issueCertificate',
+                    $certificateId,
+                    $studentName,
+                    $universityName,
+                    $courseName,
+                    $issueDate,
+                    $certificateHash,
+                    function ($err, $data) use (&$calldata, &$error) {
+                        if ($err !== null) {
+                            $error = 'getData failed: ' . $err->getMessage();
+                        } else {
+                            $calldata = $data;
+                        }
                     }
-                }
-            );
+                );
 
-            if ($error) {
-                throw new \Exception('ABI encoding failed: ' . $error);
+                if ($error) {
+                    throw new \Exception('ABI encoding failed: ' . $error);
+                }
+
+                $gasLimit = $this->normalizeRpcHexQuantity((int) $config['blockchain']['gas_limit']);
+                $to = $config['blockchain']['contract_address'];
+
+                $tx = new $transactionClass(
+                    $nonce,
+                    $gasPrice,
+                    $gasLimit,
+                    $to,
+                    '0',
+                    $calldata
+                );
+
+                $cleanKey = ltrim($privateKey, '0x');
+                $rawTx = '0x' . $tx->getRaw($cleanKey, $config['blockchain']['chain_id']);
+
+                $this->web3->eth->sendRawTransaction(
+                    $rawTx,
+                    function ($err, $hash) use (&$txHash, &$error) {
+                        if ($err !== null) {
+                            $error = $err->getMessage();
+                        } else {
+                            $txHash = $hash;
+                        }
+                    }
+                );
+            } else {
+                $this->contract->send(
+                    'issueCertificate',
+                    $certificateId,
+                    $studentName,
+                    $universityName,
+                    $courseName,
+                    $issueDate,
+                    $certificateHash,
+                    [
+                        'from' => $fromAddress,
+                        'gas' => $config['blockchain']['gas_limit']
+                    ],
+                    function ($err, $tx) use (&$txHash, &$error) {
+                        if ($err !== null) {
+                            $error = $err->getMessage();
+                            return;
+                        }
+                        $txHash = $tx;
+                    }
+                );
             }
-
-            // Step 5: Build, sign, and send raw transaction
-            $gasLimit = '0x' . dechex($config['blockchain']['gas_limit']);
-            $to       = $config['blockchain']['contract_address'];
-
-            $tx = new \kornrunner\Ethereum\Transaction(
-                $nonce,
-                $gasPrice,
-                $gasLimit,
-                $to,
-                '0',        // no ETH value
-                $calldata
-            );
-
-            $cleanKey = ltrim($privateKey, '0x');
-            $rawTx = '0x' . $tx->getRaw($cleanKey, $config['blockchain']['chain_id']);
-
-            $this->web3->eth->sendRawTransaction(
-                $rawTx,
-                function ($err, $hash) use (&$txHash, &$error) {
-                    if ($err !== null) {
-                        $error = $err->getMessage();
-                    } else {
-                        $txHash = $hash;
-                    }
-                }
-            );
 
             if ($error) {
                 throw new \Exception('Blockchain transaction failed: ' . $error);
@@ -387,6 +388,44 @@ public function verifyCertificate(string $certificateId, string $certificateHash
         
         // For Ganache, return a common test address
         return '0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1';
+    }
+
+    private function normalizeRpcInteger($value): int
+    {
+        if ($value instanceof BigInteger) {
+            return (int) $value->toString();
+        }
+
+        if (is_string($value) && strpos($value, '0x') === 0) {
+            return hexdec($value);
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeRpcHexQuantity($value): string
+    {
+        if ($value instanceof BigInteger) {
+            $hex = ltrim($value->toHex(), '0');
+            return '0x' . ($hex === '' ? '0' : $hex);
+        }
+
+        if (is_string($value)) {
+            if (strpos($value, '0x') === 0) {
+                $hex = ltrim(substr($value, 2), '0');
+                return '0x' . ($hex === '' ? '0' : $hex);
+            }
+
+            if (ctype_digit($value)) {
+                return '0x' . dechex((int) $value);
+            }
+        }
+
+        if (is_int($value)) {
+            return '0x' . dechex($value);
+        }
+
+        return '0x0';
     }
 
     private function waitForTransaction(string $txHash, int $maxWaitTime = 30): bool
@@ -601,4 +640,3 @@ public function verifyCertificate(string $certificateId, string $certificateHash
 //         return hash('sha256', json_encode($certificateData));
 //     }
 // }
-

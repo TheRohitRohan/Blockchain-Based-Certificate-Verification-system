@@ -367,15 +367,23 @@ class SignatureService
         $sig    = null;
         $signer = null;
 
-        if (preg_match('/<cert:signature>(.*?)<\/cert:signature>/s', $binary, $m)) {
-            $sig = html_entity_decode(trim($m[1]), ENT_XML1, 'UTF-8');
+        // FIX 7: Require exactly one signature tag to prevent injection attacks
+        $sigMatches = [];
+        $sigCount = preg_match_all('/<cert:signature>(.*?)<\/cert:signature>/s', $binary, $sigMatches);
+        
+        if ($sigCount === 0) {
+            return null;
         }
+        
+        if ($sigCount > 1) {
+            error_log("Multiple signature tags found in PDF - potential tampering detected");
+            return null; // Reject PDFs with multiple signature tags
+        }
+        
+        $sig = html_entity_decode(trim($sigMatches[1][0]), ENT_XML1, 'UTF-8');
+        
         if (preg_match('/<cert:signer>(.*?)<\/cert:signer>/s', $binary, $m)) {
             $signer = html_entity_decode(trim($m[1]), ENT_XML1, 'UTF-8');
-        }
-
-        if ($sig === null) {
-            return null;
         }
 
         return ['signature' => $sig, 'signer' => $signer];

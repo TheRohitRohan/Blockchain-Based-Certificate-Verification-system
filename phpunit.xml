@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="backend/tests/bootstrap.php" colors="true">
+  <testsuites>
+    <testsuite name="Unit Tests">
+      <directory>backend/tests/unit</directory>
+    </testsuite>
+    <testsuite name="Integration Tests">
+      <directory>backend/tests/integration</directory>
+    </testsuite>
+  </testsuites>
+  <logging>
+    <junit outputFile="backend/tests/reports/junit-report.xml"/>
+  </logging>
+</phpunit>

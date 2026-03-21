@@ -401,18 +401,27 @@ class VerificationEngine {
     
     /**
      * Invalidate blockchain cache for a certificate
+     * FIX 10: Must delete all related cache keys properly
      */
-    public function invalidateBlockchainCache(string $certificateId): void {
-        // Delete generic blockchain verification cache patterns
+    public function invalidateBlockchainCache(string $certificateId, ?string $onchainHash = null): void {
+        // Delete known exact keys
         $cacheKeysToDelete = [
-            "blockchain_verify:{$certificateId}:",
             "verify:{$certificateId}",
             "cert_light:{$certificateId}"
         ];
         
+        // If we have the onchain hash, delete the exact blockchain verify key
+        if ($onchainHash) {
+            $cacheKeysToDelete[] = "blockchain_verify:{$certificateId}:{$onchainHash}";
+        }
+        
         foreach ($cacheKeysToDelete as $key) {
             $this->cache->delete($key);
         }
+        
+        // NOTE: Pattern-based deletion like "blockchain_verify:{id}:*" requires 
+        // Redis SCAN or file glob - not supported by simple delete().
+        // The exact key with onchainHash should be passed when available.
     }
     
     /**
