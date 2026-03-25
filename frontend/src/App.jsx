@@ -1,8 +1,9 @@
-import './index.css'
-import LandingPage from './components/LandingPage'
+import '@fontsource-variable/mona-sans';
+import './index.css';
+import LandingPage from './components/LandingPage';
 
 function App() {
-  return <LandingPage />
+  return <LandingPage />;
 }
 
-export default App
+export default App;

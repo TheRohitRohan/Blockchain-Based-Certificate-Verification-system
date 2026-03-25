@@ -1,155 +1,220 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
-/* Subtle geometric background pattern using SVG */
-function HeroPattern() {
-    return (
+/* Animated terminal-style certificate block */
+function CertBlock() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 2400);
+    return () => clearInterval(t);
+  }, []);
+
+  const hashes = [
+    '0xa3f5e2c71d9b4f8a2c6d0e1b3f5a',
+    '0x7f3a9e2b1c4d8f6a0e1b2c3d4e5f',
+    '0xb8d4c1e9f2a5b3c7d0e4f1a8b2c5',
+  ];
+  const hash = hashes[tick % hashes.length];
+
+  return (
+    <div
+      className="sr-right mono"
+      style={{
+        background: '#0a0a0a',
+        border: '1px solid #1f1f1f',
+        padding: '1.5rem',
+        width: '100%',
+        maxWidth: '380px',
+      }}
+    >
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <span style={{ color: '#444', fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+          Certificate
+        </span>
+        <span style={{ color: '#2a7' , fontSize: '0.65rem', letterSpacing: '0.08em' }}>
+          ● VALID
+        </span>
+      </div>
+
+      {/* Fields */}
+      {[
+        { k: 'id',         v: 'CERT-ETH-2024-0x7F3A' },
+        { k: 'student',    v: 'Rohit Sharma' },
+        { k: 'course',     v: 'B.Tech Computer Science' },
+        { k: 'issued_by',  v: 'IIT Bombay' },
+        { k: 'block',      v: '#19,847,203' },
+      ].map(({ k, v }) => (
+        <div key={k} style={{ display: 'flex', gap: '1rem', marginBottom: '0.45rem' }}>
+          <span style={{ color: '#444', flexShrink: 0, width: '6.5rem' }}>{k}</span>
+          <span style={{ color: '#aaa' }}>{v}</span>
+        </div>
+      ))}
+
+      {/* Hash row — animates between values */}
+      <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #1a1a1a' }}>
+        <div style={{ color: '#444', fontSize: '0.65rem', marginBottom: '0.4rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>sha256</div>
         <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%236366f1' fill-opacity='0.07'%3E%3Ccircle cx='30' cy='30' r='1.5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                backgroundSize: '60px 60px',
-            }}
-        />
-    );
+          key={hash}
+          style={{
+            color: '#555',
+            wordBreak: 'break-all',
+            fontSize: '0.7rem',
+            animation: 'fade 0.4s ease',
+          }}
+        >
+          {hash}…
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Hero() {
-    return (
-        <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20"
-            style={{ background: '#030712' }}
-        >
-            {/* Dot Pattern */}
-            <HeroPattern />
+  const sectionRef = useRef(null);
 
-            {/* Single, subtle top-center vignette — no multi-layer gradients */}
-            <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                    background: 'radial-gradient(ellipse 70% 45% at 50% 0%, rgba(99,102,241,0.14) 0%, transparent 65%)',
-                }}
-            />
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    // Trigger sr elements inside immediately (above-fold)
+    el.querySelectorAll('.sr,.sr-left,.sr-right,.sr-scale').forEach(c => c.classList.add('visible'));
+  }, []);
 
-            {/* Horizontal accent line near top */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand-500/40 to-transparent" />
+  return (
+    <section
+      ref={sectionRef}
+      style={{
+        minHeight: '100svh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        padding: '0 2rem 5rem',
+        paddingTop: '6rem',
+        position: 'relative',
+        background: '#000',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Faint dot grid */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage:
+            'radial-gradient(circle, #1c1c1c 1px, transparent 1px)',
+          backgroundSize: '36px 36px',
+          pointerEvents: 'none',
+          opacity: 0.7,
+        }}
+      />
 
-            {/* Content */}
-            <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
-                {/* Badge */}
-                <div
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-brand-500/25 text-sm text-brand-300 mb-8"
-                    style={{
-                        background: 'rgba(99,102,241,0.06)',
-                        animation: 'fadeIn 0.6s ease-out forwards',
-                    }}
-                >
-                    <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-accent-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-400" />
-                    </span>
-                    Powered by Ethereum Smart Contracts
-                </div>
+      {/* Horizontal scan line */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          height: '1px',
+          background:
+            'linear-gradient(90deg, transparent 0%, #ffffff08 20%, #ffffff14 50%, #ffffff08 80%, transparent 100%)',
+          animation: 'scan 6s linear infinite',
+          pointerEvents: 'none',
+        }}
+      />
 
-                {/* Headline */}
-                <h1
-                    className="text-5xl md:text-7xl lg:text-8xl font-extrabold leading-tight tracking-tight mb-6"
-                    style={{ animation: 'slideUp 0.8s ease-out 0.1s both' }}
-                >
-                    Certificates You Can
-                    <br />
-                    <span className="gradient-text">Trust Forever</span>
-                </h1>
+      <div
+        className="max-w-7xl mx-auto w-full"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: '4rem',
+          alignItems: 'flex-end',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        {/* Left — large type */}
+        <div>
+          {/* Label */}
+          <p className="label sr sr-d1" style={{ marginBottom: '2rem' }}>
+            Ethereum · Smart Contracts · Open Source
+          </p>
 
-                {/* Subheadline */}
-                <p
-                    className="text-xl md:text-2xl text-slate-400 max-w-3xl mx-auto mb-10 leading-relaxed font-light"
-                    style={{ animation: 'slideUp 0.8s ease-out 0.25s both' }}
-                >
-                    CertiLedger stores academic certificates immutably on the Ethereum blockchain.
-                    Anyone, anywhere can verify authenticity in seconds — no middlemen, no fraud.
-                </p>
+          {/* Display headline — variable weight */}
+          <h1
+            className="sr sr-d2"
+            style={{
+              fontSize: 'clamp(3.5rem, 9vw, 8.5rem)',
+              fontWeight: 800,
+              lineHeight: 0.9,
+              letterSpacing: '-0.04em',
+              fontVariationSettings: '"wdth" 100',
+              marginBottom: '2.5rem',
+            }}
+          >
+            Certificates
+            <br />
+            <span style={{ fontWeight: 300, color: '#555', letterSpacing: '-0.03em' }}>
+              on&#8209;chain.
+            </span>
+          </h1>
 
-                {/* CTA Buttons */}
-                <div
-                    className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
-                    style={{ animation: 'slideUp 0.8s ease-out 0.4s both' }}
-                >
-                    <a href="#" className="btn-primary text-base px-8 py-4 w-full sm:w-auto justify-center">
-                        <span className="relative z-10">Issue Certificate</span>
-                        <svg className="w-5 h-5 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                    </a>
-                    <a href="#verify" className="btn-secondary text-base px-8 py-4 w-full sm:w-auto justify-center">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        Verify a Certificate
-                    </a>
-                </div>
+          {/* Sub */}
+          <p
+            className="sr sr-d3"
+            style={{
+              fontSize: '1.125rem',
+              color: '#666',
+              maxWidth: '44ch',
+              lineHeight: 1.65,
+              fontWeight: 400,
+              marginBottom: '3rem',
+            }}
+          >
+            A blockchain protocol that issues and stores academic certificates
+            as immutable records on Ethereum. Tamper-proof by design.
+            Verifiable by anyone.
+          </p>
 
-                {/* Certificate Card */}
-                <div
-                    className="relative mx-auto max-w-2xl"
-                    style={{ animation: 'slideUp 0.8s ease-out 0.55s both' }}
-                >
-                    <div className="rounded-2xl p-6 border border-white/8 animate-float"
-                        style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(24px)' }}
-                    >
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg border border-brand-500/25 flex items-center justify-center"
-                                    style={{ background: 'rgba(99,102,241,0.1)' }}>
-                                    <svg className="w-5 h-5 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
-                                <div className="text-left">
-                                    <p className="text-xs text-slate-500 font-mono">CERT-2024-0x7F3A</p>
-                                    <p className="text-sm font-semibold text-white">Bachelor of Computer Science</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-accent-500/25"
-                                style={{ background: 'rgba(52,211,153,0.06)' }}>
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent-400 animate-pulse" />
-                                <span className="text-xs font-medium text-accent-400">Verified</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 text-left">
-                            {[
-                                { label: 'Student', value: 'Rahul Sharma' },
-                                { label: 'University', value: 'IIT Bombay' },
-                                { label: 'Year', value: '2024' },
-                            ].map(({ label, value }) => (
-                                <div key={label} className="rounded-lg p-3 border border-white/5"
-                                    style={{ background: 'rgba(255,255,255,0.02)' }}>
-                                    <p className="text-xs text-slate-500 mb-1">{label}</p>
-                                    <p className="text-sm font-medium text-white">{value}</p>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-2">
-                            <svg className="w-3.5 h-3.5 text-brand-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                            </svg>
-                            <p className="text-xs text-slate-500 font-mono truncate">0x7F3A9E2B1C4D8F6A0E1B2C3D4E5F6A7B8C9D0E1F2...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+          {/* Actions */}
+          <div className="sr sr-d4" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <a href="#" className="btn btn-white">Issue a certificate</a>
+            <a href="#verify" className="btn btn-ghost">Verify →</a>
+          </div>
+        </div>
 
-            {/* Bottom fade out */}
-            <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
-                style={{ background: 'linear-gradient(to top, #030712, transparent)' }} />
+        {/* Right — cert block */}
+        <div className="hidden lg:block" style={{ paddingBottom: '0.25rem' }}>
+          <CertBlock />
+        </div>
+      </div>
 
-            {/* Scroll indicator */}
-            <div
-                className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-                style={{ animation: 'fadeIn 1s ease-out 1s both' }}
-            >
-                <span className="text-xs text-slate-600 font-medium tracking-widest uppercase">Scroll</span>
-                <div className="w-px h-8 animate-beam"
-                    style={{ background: 'linear-gradient(to bottom, rgba(99,102,241,0.5), transparent)' }} />
-            </div>
-        </section>
-    );
+      {/* Bottom tags row */}
+      <div
+        className="max-w-7xl mx-auto w-full sr"
+        style={{
+          display: 'flex',
+          gap: '2rem',
+          marginTop: '4rem',
+          paddingTop: '2rem',
+          borderTop: '1px solid #1a1a1a',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        {[
+          { label: 'Network', value: 'Ethereum' },
+          { label: 'Contract', value: 'CertificateRegistry.sol' },
+          { label: 'Status', value: 'In Development' },
+          { label: 'License', value: 'MIT' },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div className="label" style={{ marginBottom: '0.3rem' }}>{label}</div>
+            <div className="mono" style={{ color: '#888' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
