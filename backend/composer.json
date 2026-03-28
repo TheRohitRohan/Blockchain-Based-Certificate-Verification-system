@@ -3,7 +3,7 @@
     "description": "PHP Backend API for Certificate Verification System",
     "type": "project",
     "require": {
-        "php": ">=7.4",
+        "php": "^8.2",
         "ext-json": "*",
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
