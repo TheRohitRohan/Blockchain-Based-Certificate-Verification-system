@@ -33,10 +33,7 @@ class VerificationEngine {
     public function verifyUploadedPDF(string $pdfPath): array
     {
         try {
-            // Step 1: Verify digital signature
-            $signatureResult = $this->signatureService->verifySignature($pdfPath);
-
-            // Step 2: Extract metadata from PDF
+            // Step 1: Extract metadata from PDF to get certificate_id
             $extractedMetadata = $this->pdfService->extractMetadata($pdfPath);
 
             if (!$extractedMetadata) {
@@ -51,7 +48,12 @@ class VerificationEngine {
                     'status'    => 'invalid',
                     'message'   => 'Could not extract certificate metadata from PDF. '
                                  . 'The PDF may not have been issued by this system.',
-                    'signature' => $signatureResult,
+                    'signature' => [
+                        'signed'  => false,
+                        'valid'   => false,
+                        'signer'  => '',
+                        'message' => 'Cannot verify signature: certificate not found in database',
+                    ],
                 ];
             }
 
@@ -60,7 +62,7 @@ class VerificationEngine {
             // NOTE: No cache read here — every uploaded PDF must be freshly verified.
             // Caching here would allow a tampered PDF to return a stale "valid" result.
 
-            // Step 3: Fetch database record
+            // Step 2: Fetch database record (to get onchain_hash for signature verification)
             $dbRecord = $this->getCertificateRecord($certificateId);
 
             if (!$dbRecord) {
@@ -68,12 +70,22 @@ class VerificationEngine {
                     'valid'              => false,
                     'status'             => 'not_found',
                     'message'            => 'Certificate not found in database',
-                    'signature'          => $signatureResult,
+                    'signature'          => [
+                        'signed'  => false,
+                        'valid'   => false,
+                        'signer'  => '',
+                        'message' => 'Cannot verify signature: certificate not found in database',
+                    ],
                     'extracted_metadata' => $extractedMetadata,
                 ];
                 $this->logVerification($certificateId, 'not_found', 'upload', $result);
                 return $result;
             }
+
+            // Step 3: Verify digital signature
+            // FIXED: Pass the stored onchain_hash from DB record as required second parameter
+            // Signature is verified against the stable onchain hash, not PDF binary
+            $signatureResult = $this->signatureService->verifySignature($pdfPath, $dbRecord['onchain_hash']);
 
             // Step 4: Check revocation
             $isRevoked = ($dbRecord['status'] === 'revoked' || ($dbRecord['is_revoked'] ?? false));
@@ -106,10 +118,13 @@ class VerificationEngine {
             $pdfHash      = $this->pdfService->calculatePDFHash($pdfPath);
             $pdfHashMatch = ($pdfHash === $dbRecord['pdf_hash']);
 
-            // Step 7: Blockchain verification (cached)
-            $blockchainValid = false;
-            if (!empty($dbRecord['onchain_hash'])) {
+            // Step 7: Blockchain verification (cached, but don't cache failures)
+            $blockchainValid = null; // null = not checked, true = verified, false = failed
+            $blockchainConnected = $this->blockchain->isConnected();
+            if (!empty($dbRecord['onchain_hash']) && $blockchainConnected) {
                 $blockchainValid = $this->verifyBlockchainCached($certificateId, $dbRecord['onchain_hash']);
+            } elseif (!$blockchainConnected) {
+                $blockchainValid = null; // blockchain unavailable, don't treat as failure
             }
 
             // Step 8: Determine overall validity
@@ -119,11 +134,16 @@ class VerificationEngine {
             $signatureRequired = (bool)($dbRecord['signature_status'] ?? false);
             $signatureOk       = $signatureResult['valid'] ?? false;
 
-            $isValid = !$isRevoked
+            // Core validity: DB checks (not revoked, metadata match, PDF hash match)
+            // Blockchain is reported separately — don't fail the whole verification
+            // just because blockchain is temporarily unavailable
+            $coreValid = !$isRevoked
                     && $comparison['matches']
                     && $pdfHashMatch
-                    && $blockchainValid
                     && (!$signatureRequired || $signatureOk);
+            
+            // Full validity includes blockchain if it was checked
+            $isValid = $coreValid && ($blockchainValid === true || $blockchainValid === null);
 
             $status = $isValid ? 'valid' : 'invalid';
 
@@ -132,12 +152,13 @@ class VerificationEngine {
                 'status'               => $status,
                 'message'              => $this->getVerificationMessage(
                                             $isValid, false, $comparison,
-                                            $pdfHashMatch, $blockchainValid
+                                            $pdfHashMatch, $blockchainValid ?? false
                                           ),
                 'checks'               => [
                     'metadata_match'   => $comparison['matches'],
                     'pdf_hash_match'   => $pdfHashMatch,
                     'blockchain_valid' => $blockchainValid,
+                    'blockchain_connected' => $blockchainConnected,
                     'signature_valid'  => $signatureOk,
                     'signature_required' => $signatureRequired,
                     'not_revoked'      => true,
@@ -214,16 +235,17 @@ class VerificationEngine {
                         $providedHash === $dbRecord['onchain_hash']);
         }
         
-        // Verify blockchain with caching
-        $blockchainValid = false;
-        if (!empty($dbRecord['onchain_hash'])) {
+        // Verify blockchain with caching — don't fail if blockchain unavailable
+        $blockchainValid = null;
+        $blockchainConnected = $this->blockchain->isConnected();
+        if (!empty($dbRecord['onchain_hash']) && $blockchainConnected) {
             $blockchainValid = $this->verifyBlockchainCached(
                 $certificateId,
                 $dbRecord['onchain_hash']
             );
         }
         
-        $isValid = $hashMatch && $blockchainValid;
+        $isValid = $hashMatch && ($blockchainValid === true || $blockchainValid === null);
         
         $result = [
             'valid' => $isValid,
@@ -231,6 +253,7 @@ class VerificationEngine {
             'message' => $isValid ? 'Certificate is valid' : 'Certificate verification failed',
             'hash_match' => $hashMatch,
             'blockchain_valid' => $blockchainValid,
+            'blockchain_connected' => $blockchainConnected,
             'certificate' => $dbRecord
         ];
         
@@ -278,25 +301,32 @@ class VerificationEngine {
             return $result;
         }
         
-        // Verify blockchain with caching
-        $blockchainValid = false;
-        if (!empty($dbRecord['onchain_hash'])) {
+        // Verify blockchain with caching — don't fail if blockchain unavailable
+        $blockchainValid = null;
+        $blockchainConnected = $this->blockchain->isConnected();
+        if (!empty($dbRecord['onchain_hash']) && $blockchainConnected) {
             $blockchainValid = $this->verifyBlockchainCached(
                 $certificateId,
                 $dbRecord['onchain_hash']
             );
         }
         
-        $isValid = $blockchainValid;
+        // Certificate is valid from DB perspective if it's active and not revoked
+        // Blockchain verification is reported separately
+        $isValid = ($blockchainValid === true || $blockchainValid === null);
         
         $result = [
             'valid' => $isValid,
             'status' => $isValid ? 'valid' : 'invalid',
             'message' => $isValid ? 'Certificate is valid' : 'Certificate verification failed',
-            'blockchain_valid' => $blockchainValid
+            'blockchain_valid' => $blockchainValid,
+            'blockchain_connected' => $blockchainConnected
         ];
         
-        $this->cache->set($cacheKey, $result, $this->config['cache']['verification_ttl'] ?? 3600);
+        // Only cache positive results — don't cache when blockchain was unavailable
+        if ($blockchainValid !== null) {
+            $this->cache->set($cacheKey, $result, $this->config['cache']['verification_ttl'] ?? 3600);
+        }
         $this->logVerification($certificateId, $result['status'], 'certificate_id', $result);
         
         return $result;
@@ -393,8 +423,11 @@ class VerificationEngine {
         
         $result = $this->blockchain->verifyCertificate($certificateId, $onchainHash);
         
-        // Cache with shorter TTL (5 minutes)
-        $this->cache->set($cacheKey, $result, self::BLOCKCHAIN_CACHE_TTL);
+        // Only cache positive results (true) — don't cache failures
+        // This prevents stale "invalid" results when blockchain was temporarily down
+        if ($result === true) {
+            $this->cache->set($cacheKey, $result, self::BLOCKCHAIN_CACHE_TTL);
+        }
         
         return $result;
     }

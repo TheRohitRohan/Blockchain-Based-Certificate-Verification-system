@@ -9,20 +9,37 @@ $dotenv->safeLoad();
 
 header('Content-Type: application/json');
 
-// FIX 14A: Origin-aware CORS instead of wildcard
-$allowedOrigins = array_values(array_filter([
+// CORS Configuration
+$allowedOrigins = [
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost',
+    'http://127.0.0.1',
     getenv('FRONTEND_URL') ?: '',
-]));
+];
+
+// Remove empty strings from array
+$allowedOrigins = array_values(array_filter($allowedOrigins));
+
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($requestOrigin, $allowedOrigins, true)) {
+
+$isLocalhost = preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $requestOrigin);
+
+if (!empty($requestOrigin) && (in_array($requestOrigin, $allowedOrigins, true) || $isLocalhost)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);
+} elseif (empty($requestOrigin)) {
+    // For local/development without origin (e.g., file://, direct API calls)
+    header('Access-Control-Allow-Origin: *');
 } else {
-    header('Access-Control-Allow-Origin: ' . ($allowedOrigins[0] ?? '*'));
+    // Default to first allowed origin or wildcard
+    header('Access-Control-Allow-Origin: ' . (reset($allowedOrigins) ?: '*'));
 }
+
 header('Vary: Origin');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, Accept, X-Requested-With');
+header('Access-Control-Allow-Credentials: true');
+header('Access-Control-Max-Age: 3600');
 
 if (extension_loaded('zlib')) {
     ini_set('zlib.output_compression', 4096);
@@ -39,6 +56,7 @@ use App\Auth;
 use App\CertificateService;
 use App\Database;
 use App\PublicVerificationService;
+use App\SignatureService;
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_SERVER['REQUEST_URI'] ?? '/';
@@ -47,6 +65,7 @@ $path = str_replace('/api', '', $path);
 
 $auth = new Auth();
 $certService = new CertificateService();
+$signatureService = new SignatureService();
 
 // Extract token from Authorization header
 $headers = getallheaders();

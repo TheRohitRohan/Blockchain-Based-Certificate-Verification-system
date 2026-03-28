@@ -127,6 +127,7 @@ class ComparisonEngine {
             WHERE c.certificate_id = ?
         ");
         $stmt->execute([$certificateId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ?: null;  // Convert false to null for type safety
     }
 }

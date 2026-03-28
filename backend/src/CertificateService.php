@@ -83,23 +83,28 @@ class CertificateService {
             // Step 5: QR code is already embedded in the PDF via the HTML template.
             // No separate insertion needed for Flow 1 (generated certificates).
 
-            // Step 6: Sign the PDF with the university's private key.
-            // This MUST happen before calculatePDFHash. The stored pdf_hash must be
-            // the hash of the SIGNED PDF so verification can reproduce it exactly.
-            $signatureStatus = $this->signatureService->signPDF($pdfPath, $data['university_id']);
+            // Step 6: Calculate PDF hash BEFORE signing.
+            // This is the hash of the metadata-embedded PDF (before signature is added).
+            $pdfHash = $this->pdfService->calculatePDFHash($pdfPath);
+
+            // Step 7: Generate combined onchain hash: keccak256(metadataHash + pdfHash)
+            // This  stable hash will be what we sign.
+            $onchainHash = $this->blockchain->generateCombinedHash($metadataHash, $pdfHash);
+
+            // Step 8: Sign the PDF with the university's private key using the onchainHash.
+            // FIXED: Pass onchainHash as the third parameter.
+            // Signing no longer invalidates the PDF hash since we sign the stable onchainHash,
+            // not the PDF binary.
+            $signatureStatus = $this->signatureService->signPDF(
+                $pdfPath,
+                $data['university_id'],
+                $onchainHash  // FIXED: Pass the onchain hash as 3rd parameter
+            );
             if (!$signatureStatus) {
                 error_log("Warning: PDF signing failed for {$certificateId} — certificate will be unsigned");
             }
 
-            // Step 7: Calculate PDF hash of the SIGNED PDF.
-            // If signing was skipped/failed, this is the hash of the unsigned PDF —
-            // that is still consistent as long as verification also skips signature check.
-            $pdfHash = $this->pdfService->calculatePDFHash($pdfPath);
-
-            // Step 8: Generate combined onchain hash: keccak256(metadataHash + pdfHash)
-            $onchainHash = $this->blockchain->generateCombinedHash($metadataHash, $pdfHash);
-
-            // Step 9: Anchor on blockchain (mock if not connected or no private key)
+            // Step 9: Anchor on blockchain (will return mock:true if not connected)
             $blockchainResult = $this->blockchain->issueCertificate([
                 'certificate_id'   => $certificateId,
                 'student_name'     => $student['full_name'],
@@ -108,6 +113,11 @@ class CertificateService {
                 'issue_date'       => $data['issue_date'],
                 'certificate_hash' => $onchainHash,
             ]);
+
+            // Check if blockchain actually failed (not mock, but actual error)
+            $isMock = $blockchainResult['mock'] ?? false;
+            $blockchainSuccess = $blockchainResult['success'] ?? false;
+            $txHash = $blockchainResult['tx_hash'] ?? null;
 
             // Step 10: Store block info
             $blockNumber = $this->blockchain->getCurrentBlock();
@@ -133,11 +143,11 @@ class CertificateService {
                 $data['degree_type'] ?? null,
                 $data['issue_date'],
                 $onchainHash,
-                $blockchainResult['tx_hash'] ?? null,
+                $txHash,                // null when mock, real hash when blockchain worked
                 $pdfFilename,
-                $qrCodeFileName,        // Now populated with actual QR filename
+                $qrCodeFileName,
                 $metadataHash,
-                $pdfHash,           // hash of the SIGNED PDF
+                $pdfHash,
                 $onchainHash,
                 $metadataJson,
                 $signatureStatus ? 1 : 0,
@@ -147,7 +157,7 @@ class CertificateService {
             ]);
 
             $this->db->commit();
-            $this->warmupCertificateCache($certificateId, $onchainHash);
+            $this->warmupCertificateCache($certificateId, $onchainHash, !$isMock);
 
             return [
                 'success'          => true,
@@ -155,7 +165,8 @@ class CertificateService {
                 'certificate_hash' => $onchainHash,
                 'metadata_hash'    => $metadataHash,
                 'pdf_hash'         => $pdfHash,
-                'tx_hash'          => $blockchainResult['tx_hash'] ?? 'pending',
+                'tx_hash'          => $txHash ?? 'pending',
+                'blockchain_mode'  => $isMock ? 'mock' : 'live',
                 'signature_status' => $signatureStatus,
                 'pdf_path'         => $pdfFilename,
             ];
@@ -269,22 +280,25 @@ class CertificateService {
             // ── Step 5: Add QR code if not already present ─────────────────────────
             $existingText = $this->pdfService->extractText($tempPath);
             $hasQR = (strpos($existingText, 'verify?certificate_id') !== false
-                   || strpos(file_get_contents($tempPath), 'cert:metadata') !== false);
+                    || strpos(file_get_contents($tempPath), 'cert:metadata') !== false);
             // Always add/overlay QR — it's a separate overlay, won't break existing content
             $this->pdfService->addQRCodeToExistingPDF($tempPath, $metadata['certificate_id']);
 
             // Step 5b: Generate QR code filename for database (used for Flow 2 uploads)
             $qrCodeFileName = $this->pdfService->generateQRCodeFileName($metadata['certificate_id']);
 
-            // ── Step 6: Sign the PDF ──────────────────────────────────────────────
-            $signatureStatus = $this->signatureService->signPDF($tempPath, $universityId);
+            // ── Step 6: Calculate PDF hash BEFORE signing ──────────────────────────
+            // This is the hash of the metadata-embedded PDF (before signature is added).
+            // Matches the flow in createCertificate() to ensure consistency.
+            $pdfHash     = $this->pdfService->calculatePDFHash($tempPath);
+            $onchainHash = $this->blockchain->generateCombinedHash($metadataHash, $pdfHash);
+
+            // ── Step 7: Sign the PDF with the calculated onchain hash ──────────────
+            // FIXED: Now passes onchainHash as required third parameter
+            $signatureStatus = $this->signatureService->signPDF($tempPath, $universityId, $onchainHash);
             if (!$signatureStatus) {
                 error_log("Warning: PDF signing failed for upload {$metadata['certificate_id']}");
             }
-
-            // ── Step 7: Calculate hash of the final signed PDF ────────────────────
-            $pdfHash     = $this->pdfService->calculatePDFHash($tempPath);
-            $onchainHash = $this->blockchain->generateCombinedHash($metadataHash, $pdfHash);
 
             // ── Step 8: Store on blockchain ───────────────────────────────────────
             $blockchainResult = $this->blockchain->issueCertificate([
@@ -661,7 +675,7 @@ class CertificateService {
         return null;
     }
     
-    private function warmupCertificateCache(string $certificateId, string $onchainHash): void {
+    private function warmupCertificateCache(string $certificateId, string $onchainHash, bool $blockchainReal = true): void {
         try {
             $cache = Cache::getInstance();
             $config = $this->getConfig();
@@ -672,12 +686,15 @@ class CertificateService {
                 'valid' => true,
                 'status' => 'valid',
                 'message' => 'Certificate is valid',
-                'blockchain_valid' => true
+                'blockchain_valid' => $blockchainReal ? true : null,
+                'blockchain_connected' => $blockchainReal
             ];
             $cache->set("cert_light:{$certificateId}", $lightResult, $ttl);
             
-            // Pre-cache blockchain verification
-            $cache->set("blockchain_verify:{$certificateId}:{$onchainHash}", true, $config['cache']['ttl'] ?? 3600);
+            // Only pre-cache blockchain verification if it was actually on blockchain
+            if ($blockchainReal) {
+                $cache->set("blockchain_verify:{$certificateId}:{$onchainHash}", true, $config['cache']['ttl'] ?? 3600);
+            }
             
         } catch (\Exception $e) {
             // Cache warming failure is non-critical

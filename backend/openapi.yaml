@@ -1,0 +1,1087 @@
+openapi: 3.0.0
+info:
+  title: Certificate Verification System API
+  description: A decentralized certificate verification system using Ethereum blockchain for immutable, tamper-proof certificate records.
+  version: 1.0.0
+  contact:
+    name: Certificate System Support
+    email: support@certificate-system.com
+  license:
+    name: MIT
+
+servers:
+  - url: ./api
+    description: Relative path (Works with XAMPP and PHP Server)
+  - url: http://localhost:8000/api
+    description: Local Development Server (PHP Built-in Server)
+  - url: http://localhost/api
+    description: Local Development Server (XAMPP/Root)
+  - url: https://api.certificate-system.com
+    description: Production Server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Certificates
+    description: Certificate management operations
+  - name: Public Verification
+    description: Public certificate verification (no auth required)
+  - name: Universities
+    description: University management
+  - name: Students
+    description: Student management
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: JWT Bearer token for authentication
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: john.doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        role:
+          type: string
+          enum: [admin, university, student]
+          example: student
+        full_name:
+          type: string
+          example: John Doe
+        university_id:
+          type: integer
+          example: 1
+        wallet_address:
+          type: string
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+
+    University:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: MIT
+        code:
+          type: string
+          example: MIT-001
+        address:
+          type: string
+          example: Cambridge, MA
+        contact_email:
+          type: string
+          format: email
+          example: admin@mit.edu
+        contact_phone:
+          type: string
+          example: "+1-617-253-1000"
+        wallet_address:
+          type: string
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Student:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 2
+        student_id:
+          type: string
+          example: STU-2024-001
+        university_id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: Jane Smith
+        email:
+          type: string
+          format: email
+          example: jane@example.com
+        date_of_birth:
+          type: string
+          format: date
+          example: "2000-01-15"
+        enrollment_date:
+          type: string
+          format: date
+          example: "2022-08-01"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        certificate_id:
+          type: string
+          example: CERT-123ABC456
+        student_id:
+          type: integer
+          example: 1
+        university_id:
+          type: integer
+          example: 1
+        course_name:
+          type: string
+          example: "Advanced Computer Science"
+        degree_type:
+          type: string
+          example: "Bachelor of Science"
+        issue_date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        certificate_hash:
+          type: string
+          example: "0x1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
+        pdf_hash:
+          type: string
+          example: "0xaf2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
+        metadata_hash:
+          type: string
+          example: "0xaa2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
+        onchain_hash:
+          type: string
+          example: "0xab2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
+        blockchain_tx_hash:
+          type: string
+          example: "0x123abc456def789ghi012jkl345mno"
+        status:
+          type: string
+          enum: [active, revoked, expired]
+          example: active
+        signature_status:
+          type: boolean
+          example: true
+        is_revoked:
+          type: boolean
+          example: false
+        student_name:
+          type: string
+          example: Jane Smith
+        university_name:
+          type: string
+          example: MIT
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VerificationResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        valid:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Certificate is valid and verified on blockchain"
+        certificate:
+          $ref: '#/components/schemas/Certificate'
+        verification_details:
+          type: object
+          properties:
+            hash_match:
+              type: boolean
+              example: true
+            blockchain_verified:
+              type: boolean
+              example: true
+            signature_valid:
+              type: boolean
+              example: true
+            not_revoked:
+              type: boolean
+              example: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+        message:
+          type: string
+          example: "Invalid or missing authentication token"
+
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+
+    MessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and return JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: admin@certificate-system.com
+                password:
+                  type: string
+                  format: password
+                  example: admin123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Register a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - role
+              properties:
+                username:
+                  type: string
+                  example: john.doe
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePass123!
+                full_name:
+                  type: string
+                  example: John Doe
+                role:
+                  type: string
+                  enum: [admin, university, student]
+                  example: student
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Registration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities:
+    get:
+      tags:
+        - Universities
+      summary: Get all universities
+      description: Retrieve list of all active universities
+      responses:
+        '200':
+          description: List of universities retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  universities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/University'
+    post:
+      tags:
+        - Universities
+      summary: Create new university
+      description: Create a new university (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: Massachusetts Institute of Technology
+                code:
+                  type: string
+                  example: MIT-001
+                address:
+                  type: string
+                  example: Cambridge, MA
+                contact_email:
+                  type: string
+                  format: email
+                contact_phone:
+                  type: string
+      responses:
+        '200':
+          description: University created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students:
+    get:
+      tags:
+        - Students
+      summary: Get students list
+      description: Retrieve list of students (university/admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Students list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  students:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Student'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Students
+      summary: Create new student
+      description: Register a new student (university/admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - full_name
+                - student_id
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                full_name:
+                  type: string
+                student_id:
+                  type: string
+                enrollment_date:
+                  type: string
+                  format: date
+                university_id:
+                  type: integer
+                  description: Required for admin, auto-filled for university role
+      responses:
+        '200':
+          description: Student created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/create:
+    post:
+      tags:
+        - Certificates
+      summary: Create a new certificate
+      description: Generate and issue a new digital certificate (university/admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - student_id
+                - course_name
+                - issue_date
+              properties:
+                student_id:
+                  type: integer
+                  example: 1
+                course_name:
+                  type: string
+                  example: Advanced Computer Science
+                degree_type:
+                  type: string
+                  example: Bachelor of Science
+                issue_date:
+                  type: string
+                  format: date
+                  example: "2024-01-15"
+      responses:
+        '200':
+          description: Certificate created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  certificate_id:
+                    type: string
+                  blockchain_tx_hash:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/upload:
+    post:
+      tags:
+        - Certificates
+      summary: Upload existing certificate
+      description: Upload and register an existing certificate PDF (university/admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - certificate
+              properties:
+                certificate:
+                  type: string
+                  format: binary
+                  description: PDF file of the certificate
+      responses:
+        '200':
+          description: Certificate uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Upload error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/verify:
+    post:
+      tags:
+        - Certificates
+      summary: Verify certificate
+      description: Verify a certificate by ID or upload PDF file
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                certificate_id:
+                  type: string
+                  example: CERT-123ABC456
+                certificate_hash:
+                  type: string
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                certificate:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /public/verify:
+    get:
+      tags:
+        - Public Verification
+      summary: Public certificate verification (GET)
+      description: Verify a certificate publicly (no authentication required)
+      parameters:
+        - name: certificate_id
+          in: query
+          required: false
+          schema:
+            type: string
+            example: CERT-123ABC456
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Public Verification
+      summary: Public certificate verification (POST)
+      description: Verify a certificate by ID or upload PDF for public verification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                certificate_id:
+                  type: string
+                  example: CERT-123ABC456
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                certificate:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+
+  /public/certificate/download:
+    get:
+      tags:
+        - Public Verification
+      summary: Download certificate PDF
+      description: Download a certificate PDF for public access
+      parameters:
+        - name: certificate_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: CERT-123ABC456
+        - name: view
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [0, 1]
+            description: "1 for inline view, 0 for download"
+            example: 1
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf: {}
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates:
+    get:
+      tags:
+        - Certificates
+      summary: Get user's certificates
+      description: Get certificates (filtered by role - students see only their own)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Certificates retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  certificates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/get:
+    get:
+      tags:
+        - Certificates
+      summary: Get certificate by ID
+      description: Retrieve specific certificate details
+      parameters:
+        - name: certificate_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: CERT-123ABC456
+      responses:
+        '200':
+          description: Certificate retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  certificate:
+                    $ref: '#/components/schemas/Certificate'
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/list:
+    get:
+      tags:
+        - Certificates
+      summary: List certificates with pagination
+      description: Get paginated list of certificates with optional filters (university/admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: university_id
+          in: query
+          schema:
+            type: integer
+        - name: student_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - name: course_name
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Certificates list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  certificates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/download:
+    get:
+      tags:
+        - Certificates
+      summary: Download certificate PDF
+      description: Download a certificate PDF file
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: certificate_id
+          in: query
+          required: true
+          schema:
+            type: string
+            example: CERT-123ABC456
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf: {}
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /certificates/update:
+    put:
+      tags:
+        - Certificates
+      summary: Update certificate
+      description: Update certificate details (university/admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - certificate_id
+              properties:
+                certificate_id:
+                  type: string
+                course_name:
+                  type: string
+                degree_type:
+                  type: string
+                issue_date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Certificate updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Certificates
+      summary: Update certificate (POST)
+      description: Update certificate details using POST (university/admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - certificate_id
+              properties:
+                certificate_id:
+                  type: string
+                course_name:
+                  type: string
+                degree_type:
+                  type: string
+                issue_date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Certificate updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /certificates/delete:
+    delete:
+      tags:
+        - Certificates
+      summary: Delete certificate
+      description: Delete a certificate (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - certificate_id
+              properties:
+                certificate_id:
+                  type: string
+      responses:
+        '200':
+          description: Certificate deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Certificates
+      summary: Delete certificate (POST)
+      description: Delete a certificate using POST (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - certificate_id
+              properties:
+                certificate_id:
+                  type: string
+      responses:
+        '200':
+          description: Certificate deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /certificates/revoke:
+    post:
+      tags:
+        - Certificates
+      summary: Revoke certificate
+      description: Revoke a certificate (admin/university only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - certificate_id
+              properties:
+                certificate_id:
+                  type: string
+      responses:
+        '200':
+          description: Certificate revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/generate-key:
+    post:
+      tags:
+        - Universities
+      summary: Generate university key pair
+      description: Generate cryptographic key pair for a university (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - university_id
+              properties:
+                university_id:
+                  type: integer
+      responses:
+        '200':
+          description: Key pair generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
