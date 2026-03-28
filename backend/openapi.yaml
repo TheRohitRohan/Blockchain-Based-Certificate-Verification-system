@@ -16,8 +16,10 @@ servers:
     description: Local Development Server (PHP Built-in Server)
   - url: http://localhost/api
     description: Local Development Server (XAMPP/Root)
-  - url: https://api.certificate-system.com
-    description: Production Server
+  - url: https://blockchain-based-certificate-verification-system-production.up.railway.app/api
+    description: Railway Production Server
+  - url: http://blockchain-based-certificate-verification-system-production.up.railway.app:8080/api
+    description: Railway Production Server (Port 8080 fallback)
 
 tags:
   - name: Authentication
