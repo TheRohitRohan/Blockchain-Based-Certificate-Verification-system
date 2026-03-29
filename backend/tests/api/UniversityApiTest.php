@@ -19,6 +19,7 @@ class UniversityApiTest extends TestCase
             'base_uri'    => rtrim($base, '/') . '/',
             'http_errors' => false,
             'timeout'     => 30,
+            'verify'      => false,
         ]);
         self::$db = Database::getInstance()->getConnection();
     }
@@ -73,7 +74,12 @@ class UniversityApiTest extends TestCase
         // Verify DB
         $stmt = self::$db->prepare("SELECT id FROM universities WHERE code = ?");
         $stmt->execute([$code]);
-        $this->assertNotFalse($stmt->fetch(), 'University row not found in DB');
+        $row = $stmt->fetch();
+        $this->assertNotFalse($row, 'University row not found in DB');
+
+        // Cleanup test data to prevent db bloat
+        $delStmt = self::$db->prepare("DELETE FROM universities WHERE id = ?");
+        $delStmt->execute([$row['id']]);
     }
 
     // ─── 3. Create university as university role → 403 ───────────────

@@ -6,18 +6,15 @@
  */
 class TestState
 {
-    // Using seeded data from cleanup_and_seed.php
+    // Determined dynamically via DatabaseSetupTest.php
     public static int    $universityId       = 0;
-    public static string $universityName     = 'Global Institute of Technology';
-    public static string $universityCode     = 'GIT';
+    public static string $universityName     = '';
+    public static string $universityCode     = '';
     public static int    $userId             = 0;
     public static int    $studentId          = 0;
-    public static string $studentEmail       = 'gitstd001@git.edu';
-    public static string $studentPassword    = 'Student@123!';
-    public static string $universityEmail    = 'admin@git.edu';
-    public static string $universityPassword = 'Student@123!';
-    public static string $adminEmail         = 'admin@system.com';
-    public static string $adminPassword      = 'Admin@123456';
+    public static string $studentEmail       = '';
+    public static string $universityEmail    = '';
+    public static string $adminEmail         = '';
     public static string $certificateId      = '';
     public static string $onchainHash        = '';
     public static string $pdfPath            = '';

@@ -19,6 +19,7 @@ class StudentApiTest extends TestCase
             'base_uri'    => rtrim($base, '/') . '/',
             'http_errors' => false,
             'timeout'     => 30,
+            'verify'      => false,
         ]);
         self::$db = Database::getInstance()->getConnection();
     }
@@ -90,7 +91,13 @@ class StudentApiTest extends TestCase
 
         $stmt2 = self::$db->prepare("SELECT id FROM students WHERE user_id = ?");
         $stmt2->execute([$userRow['id']]);
-        $this->assertNotFalse($stmt2->fetch(), 'Student row not found');
+        $studentRow = $stmt2->fetch(\PDO::FETCH_ASSOC);
+        $this->assertNotFalse($studentRow, 'Student row not found');
+
+        // Cleanup
+        $db = self::$db;
+        $db->prepare("DELETE FROM students WHERE id = ?")->execute([$studentRow['id']]);
+        $db->prepare("DELETE FROM users WHERE id = ?")->execute([$userRow['id']]);
     }
 
     // ─── 4. Create student without auth → 401 ────────────────────────

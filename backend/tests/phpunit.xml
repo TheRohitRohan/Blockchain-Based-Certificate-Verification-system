@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit bootstrap="bootstrap.php"
          colors="true"
-         stopOnFailure="true"
+         stopOnFailure="false"
          cacheResult="false">
     <testsuites>
         <testsuite name="1-Setup">
@@ -19,7 +19,7 @@
     </testsuites>
     <php>
         <!-- Local: http://localhost:8000/api -->
-        <!-- Production: https://blockchain-based-certificate-verification-system-production.up.railway.app:8080/api -->
-        <env name="TEST_BASE_URL" value="http://localhost:8000/api"/>
+        <!-- Production: https://blockchain-based-certificate-verification-system-production.up.railway.app/api -->
+        <env name="TEST_BASE_URL" value="https://blockchain-based-certificate-verification-system-production.up.railway.app/api"/>
     </php>
 </phpunit>

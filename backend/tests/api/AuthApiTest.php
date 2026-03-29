@@ -20,6 +20,7 @@ class AuthApiTest extends TestCase
             'base_uri'    => rtrim($base, '/') . '/',
             'http_errors' => false,
             'timeout'     => 30,
+            'verify'      => false,
         ]);
     }
 
@@ -37,10 +38,26 @@ class AuthApiTest extends TestCase
 
     public function testLoginWithValidCredentials(): void
     {
+        // First, register a temporary test user so we explicitly know their password
+        $testEmail = 'login_test_' . uniqid() . '@test.com';
+        $testPass = 'TempPass@123!';
+        
+        $regResp = self::$http->post('auth/register', [
+            'json' => [
+                'username'  => 'logintest_' . uniqid(),
+                'email'     => $testEmail,
+                'password'  => $testPass,
+                'role'      => 'student',
+                'full_name' => 'Login Tester',
+            ],
+        ]);
+        $this->assertSame(200, $regResp->getStatusCode(), 'Temporary registration failed');
+
+        // Now test the actual login endpoint
         $resp = self::$http->post('auth/login', [
             'json' => [
-                'email'    => TestState::$universityEmail,
-                'password' => TestState::$universityPassword,
+                'email'    => $testEmail,
+                'password' => $testPass,
             ],
         ]);
 
@@ -48,16 +65,20 @@ class AuthApiTest extends TestCase
         $body = $this->json($resp);
         $this->assertTrue($body['success']);
         $this->assertArrayHasKey('token', $body);
-        $this->assertSame('university', $body['user']['role']);
+        $this->assertSame('student', $body['user']['role']);
+
+        // Persist email to test invalid paths
+        TestState::$studentEmail = $testEmail;
     }
 
     // ─── 2. Login wrong password ─────────────────────────────────────
 
     public function testLoginWithInvalidPassword(): void
     {
+        // Use the newly registered email
         $resp = self::$http->post('auth/login', [
             'json' => [
-                'email'    => TestState::$universityEmail,
+                'email'    => TestState::$studentEmail,
                 'password' => 'TotallyWrongPassword!',
             ],
         ]);

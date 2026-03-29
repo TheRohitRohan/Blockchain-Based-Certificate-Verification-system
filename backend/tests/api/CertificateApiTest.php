@@ -14,6 +14,7 @@ class CertificateApiTest extends TestCase
 {
     private static Client $http;
     private static \PDO   $db;
+    private static array  $createdCertIds = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -22,8 +23,19 @@ class CertificateApiTest extends TestCase
             'base_uri'    => rtrim($base, '/') . '/',
             'http_errors' => false,
             'timeout'     => 60, // certificate creation can be slow (blockchain)
+            'verify'      => false,
         ]);
         self::$db = Database::getInstance()->getConnection();
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        // Cleanup all certificates created during this test suite
+        if (!empty(self::$createdCertIds)) {
+            $in = str_repeat('?,', count(self::$createdCertIds) - 1) . '?';
+            $stmt = self::$db->prepare("DELETE FROM certificates WHERE certificate_id IN ($in)");
+            $stmt->execute(self::$createdCertIds);
+        }
     }
 
     private function json($response): array
@@ -50,7 +62,11 @@ class CertificateApiTest extends TestCase
                 'issue_date'    => '2024-09-01',
             ],
         ]);
-        return $this->json($resp);
+        $body = $this->json($resp);
+        if ($body['success'] ?? false) {
+            self::$createdCertIds[] = $body['certificate_id'];
+        }
+        return $body;
     }
 
     // ═════════════════════════════════════════════════════════════════
@@ -78,7 +94,8 @@ class CertificateApiTest extends TestCase
         $this->assertNotEmpty($body['certificate_id']);
         $this->assertContains($body['blockchain_mode'], ['live', 'mock']);
 
-        TestState::$uploadedCertId = $body['certificate_id'];
+        TestState::$certificateId = $body['certificate_id'];
+        self::$createdCertIds[] = $body['certificate_id'];
     }
 
     // ─── 2. Create without auth → 401 ────────────────────────────────
@@ -333,6 +350,7 @@ class CertificateApiTest extends TestCase
 
         $body = $this->json($resp);
         $this->assertTrue($body['success'], 'Cert creation failed: ' . ($body['error'] ?? ''));
+        self::$createdCertIds[] = $body['certificate_id'];
         $this->assertSame('live', $body['blockchain_mode']);
         $this->assertNotNull($body['tx_hash']);
         $this->assertStringStartsWith('0x', $body['tx_hash']);

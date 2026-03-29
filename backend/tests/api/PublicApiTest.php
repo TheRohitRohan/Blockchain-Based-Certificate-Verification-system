@@ -21,6 +21,7 @@ class PublicApiTest extends TestCase
             'base_uri'    => rtrim($base, '/') . '/',
             'http_errors' => false,
             'timeout'     => 30,
+            'verify'      => false,
         ]);
         self::$db = Database::getInstance()->getConnection();
     }

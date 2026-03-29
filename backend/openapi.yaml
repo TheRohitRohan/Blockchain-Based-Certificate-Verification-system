@@ -10,17 +10,15 @@ info:
     name: MIT
 
 servers:
-  - url: ./api
-    description: Relative path (Works with XAMPP and PHP Server)
+  - url: https://blockchain-based-certificate-verification-system-production.up.railway.app/api
+    description: Railway Production Server
   - url: http://localhost:8000/api
     description: Local Development Server (PHP Built-in Server)
   - url: http://localhost/api
     description: Local Development Server (XAMPP/Root)
-  - url: https://blockchain-based-certificate-verification-system-production.up.railway.app/api
-    description: Railway Production Server
   - url: http://blockchain-based-certificate-verification-system-production.up.railway.app:8080/api
     description: Railway Production Server (Port 8080 fallback)
-
+    
 tags:
   - name: Authentication
     description: User authentication and registration
@@ -215,6 +213,10 @@ components:
         status:
           type: string
           example: "valid"
+        blockchain_mode:
+          type: string
+          enum: [live, mock]
+          description: "Indicates whether this certification was recorded on live Ethereum network or mocked without gas"
         message:
           type: string
           example: "Certificate is valid and verified on blockchain"
@@ -300,6 +302,10 @@ components:
             overall_status:
               type: string
               example: valid
+            blockchain_mode:
+              type: string
+              enum: [live, mock]
+              example: live
             is_valid:
               type: boolean
               example: true
