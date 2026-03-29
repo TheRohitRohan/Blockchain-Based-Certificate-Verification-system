@@ -30,20 +30,28 @@ $allowedOrigins = array_values(array_filter($allowedOrigins));
 
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $appEnv = getenv('APP_ENV') ?: 'production';
+$allowedOriginsList = getenv('ALLOWED_ORIGINS') ? explode(',', getenv('ALLOWED_ORIGINS')) : $allowedOrigins;
+
+// Trim whitespace from allowed origins
+$allowedOriginsList = array_map('trim', $allowedOriginsList);
 
 $isLocalhost = preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $requestOrigin);
 
-// In development, allow all origins. In production, be strict.
+// In development, allow all origins.
 if ($appEnv === 'local' || $appEnv === 'development') {
     header('Access-Control-Allow-Origin: *');
-} elseif (!empty($requestOrigin) && (in_array($requestOrigin, $allowedOrigins, true) || $isLocalhost)) {
-    header('Access-Control-Allow-Origin: ' . $requestOrigin);
 } elseif (empty($requestOrigin)) {
-    // For local/development without origin (e.g., Postman, direct API calls)
+    // No origin header (e.g., Postman, curl, server-to-server) - allow
     header('Access-Control-Allow-Origin: *');
+} elseif ($isLocalhost) {
+    // Always allow localhost in any environment (for local development)
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
+} elseif (in_array($requestOrigin, $allowedOriginsList, true)) {
+    // Request has valid origin and it's whitelisted
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
 } else {
-    // Default to first allowed origin
-    header('Access-Control-Allow-Origin: ' . (reset($allowedOrigins) ?: '*'));
+    // Request has origin but not whitelisted - allow first in list
+    header('Access-Control-Allow-Origin: ' . (reset($allowedOriginsList) ?: '*'));
 }
 
 header('Vary: Origin');
