@@ -252,8 +252,14 @@ class PDFService
         // Wrap JSON in CDATA so no character escaping is needed.
         // htmlspecialchars() breaks JSON (braces, quotes get entity-encoded),
         // producing invalid XML that mPDF silently rejects.
+        // Decode JSON to extract student name for signer tag
+        $metadata = json_decode($metadataJson, true) ?? [];
+        $studentName = $metadata['student_name'] ?? 'Unknown';
+        
         return '<rdf:Description rdf:about="" xmlns:cert="http://certificate.system/metadata/">'
             . '<cert:metadata><![CDATA[' . $metadataJson . ']]></cert:metadata>'
+            . '<cert:signature>digital</cert:signature>'
+            . '<cert:signer>' . htmlspecialchars($studentName, ENT_XML1, 'UTF-8') . '</cert:signer>'
             . '</rdf:Description>';
     }
 

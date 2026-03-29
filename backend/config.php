@@ -79,7 +79,8 @@ return [
     'signing' => [
         'default_cert_path' => env('DEFAULT_SIGNING_CERT_PATH'),
         'default_cert_password' => env('DEFAULT_SIGNING_CERT_PASSWORD'),
-        'require_signature' => env('REQUIRE_SIGNATURE')
+        'require_signature' => env('REQUIRE_SIGNATURE'),
+        'key_encryption_secret' => env('KEY_ENCRYPTION_SECRET'),
     ]
 ];
 

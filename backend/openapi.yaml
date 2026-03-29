@@ -212,26 +212,46 @@ components:
         valid:
           type: boolean
           example: true
+        status:
+          type: string
+          example: "valid"
         message:
           type: string
           example: "Certificate is valid and verified on blockchain"
         certificate:
           $ref: '#/components/schemas/Certificate'
-        verification_details:
+        checks:
           type: object
           properties:
-            hash_match:
+            metadata_match:
               type: boolean
-              example: true
-            blockchain_verified:
+            pdf_hash_match:
               type: boolean
-              example: true
+            blockchain_valid:
+              type: boolean
             signature_valid:
               type: boolean
-              example: true
             not_revoked:
               type: boolean
-              example: true
+        original_certificate:
+          type: object
+          properties:
+            download_url:
+              type: string
+            certificate_id:
+              type: string
+        hash_mismatch_advisory:
+          type: object
+          nullable: true
+          properties:
+            title:
+              type: string
+            message:
+              type: string
+            action:
+              type: string
+        verified_fields:
+          type: object
 
     Error:
       type: object
@@ -265,6 +285,68 @@ components:
           type: string
           example: "Operation completed successfully"
 
+    PublicVerificationResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        matched:
+          type: boolean
+          description: Present on file upload method. True if all metadata and PDF hash match.
+        conclusion:
+          type: object
+          properties:
+            overall_status:
+              type: string
+              example: valid
+            is_valid:
+              type: boolean
+              example: true
+            summary:
+              type: string
+            details:
+              type: array
+              items:
+                type: string
+        verification_result:
+          type: object
+          description: Present on ID-based verification
+        checks:
+          type: object
+          description: Cryptographic and DB checks (present on PDF upload)
+        certificate_id:
+          type: string
+          example: CERT-123ABC456
+        certificate_info:
+          type: object
+          description: Authoritative certificate details for front-end rendering
+          properties:
+            identity:
+              type: object
+            status:
+              type: object
+            blockchain:
+              type: object
+            original_pdf:
+              type: object
+            visual_verification_note:
+              type: string
+        hash_mismatch_advisory:
+          type: object
+          nullable: true
+          description: Populated if a PDF file does not perfectly match the binary hash recorded on blockchain
+          properties:
+            title:
+              type: string
+            message:
+              type: string
+            action:
+              type: string
+        verified_fields:
+          type: object
+          description: Confirmed correct fields straight from the DB
+          
 paths:
   /auth/login:
     post:
@@ -549,8 +631,28 @@ paths:
                     type: boolean
                   certificate_id:
                     type: string
-                  blockchain_tx_hash:
+                  certificate_hash:
                     type: string
+                  metadata_hash:
+                    type: string
+                  pdf_hash:
+                    type: string
+                  onchain_hash:
+                    type: string
+                  tx_hash:
+                    type: string
+                    nullable: true
+                    description: "Null when blockchain_mode is mock"
+                  blockchain_mode:
+                    type: string
+                    enum: [live, mock]
+                  signature_status:
+                    type: boolean
+                  pdf_path:
+                    type: string
+                  qr_code:
+                    type: string
+                    nullable: true
         '401':
           description: Unauthorized
           content:
@@ -585,7 +687,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  certificate_id:
+                    type: string
+                  tx_hash:
+                    type: string
+                    nullable: true
+                    description: "Null when blockchain_mode is mock"
+                  blockchain_mode:
+                    type: string
+                    enum: [live, mock]
+                  signature_status:
+                    type: boolean
+                  message:
+                    type: string
         '400':
           description: Upload error
           content:
@@ -656,7 +774,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VerificationResult'
+                $ref: '#/components/schemas/PublicVerificationResult'
         '404':
           description: Certificate not found
           content:
@@ -690,7 +808,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VerificationResult'
+                $ref: '#/components/schemas/PublicVerificationResult'
 
   /public/certificate/download:
     get:

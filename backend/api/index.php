@@ -9,12 +9,17 @@ $dotenv->safeLoad();
 
 header('Content-Type: application/json');
 
+// Prevent PHP from timing out during slow blockchain transactions
+set_time_limit(0);
+
 // CORS Configuration
 $allowedOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost',
+    'http://localhost:8000',
     'http://127.0.0.1',
+    'http://127.0.0.1:8000',
     getenv('FRONTEND_URL') ?: '',
 ];
 
@@ -22,16 +27,20 @@ $allowedOrigins = [
 $allowedOrigins = array_values(array_filter($allowedOrigins));
 
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$appEnv = getenv('APP_ENV') ?: 'production';
 
 $isLocalhost = preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $requestOrigin);
 
-if (!empty($requestOrigin) && (in_array($requestOrigin, $allowedOrigins, true) || $isLocalhost)) {
+// In development, allow all origins. In production, be strict.
+if ($appEnv === 'local' || $appEnv === 'development') {
+    header('Access-Control-Allow-Origin: *');
+} elseif (!empty($requestOrigin) && (in_array($requestOrigin, $allowedOrigins, true) || $isLocalhost)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);
 } elseif (empty($requestOrigin)) {
-    // For local/development without origin (e.g., file://, direct API calls)
+    // For local/development without origin (e.g., Postman, direct API calls)
     header('Access-Control-Allow-Origin: *');
 } else {
-    // Default to first allowed origin or wildcard
+    // Default to first allowed origin
     header('Access-Control-Allow-Origin: ' . (reset($allowedOrigins) ?: '*'));
 }
 
@@ -541,7 +550,14 @@ switch ($path) {
             
             try {
                 $result = $certService->listCertificates($filters, $page, $perPage);
-                echo json_encode(['success' => true, 'certificates' => $result['data'], 'total' => $result['total'], 'page' => $page]);
+                echo json_encode([
+                    'success'      => true,
+                    'certificates' => $result['certificates'],
+                    'total'        => $result['pagination']['total'] ?? 0,
+                    'page'         => $page,
+                    'per_page'     => $perPage,
+                    'pages'        => $result['pagination']['pages'] ?? 1,
+                ]);
             } catch (\Exception $e) {
                 http_response_code(500);
                 echo json_encode(['error' => 'Failed to list certificates']);

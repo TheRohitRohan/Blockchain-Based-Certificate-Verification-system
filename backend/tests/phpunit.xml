@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="bootstrap.php"
+         colors="true"
+         stopOnFailure="true"
+         cacheResult="false">
+    <testsuites>
+        <testsuite name="1-Setup">
+            <directory>setup</directory>
+        </testsuite>
+        <testsuite name="2-Unit">
+            <directory>unit</directory>
+        </testsuite>
+        <testsuite name="3-Integration">
+            <directory>integration</directory>
+        </testsuite>
+        <testsuite name="4-API">
+            <directory>api</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <!-- Local: http://localhost:8000/api -->
+        <!-- Production: https://blockchain-based-certificate-verification-system-production.up.railway.app:8080/api -->
+        <env name="TEST_BASE_URL" value="http://localhost:8000/api"/>
+    </php>
+</phpunit>

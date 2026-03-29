@@ -159,11 +159,7 @@ Most endpoints require JWT Bearer token authentication.
 
 ## Default Test Credentials
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@certificate-system.com | admin123 |
-| University Staff | university@mit.edu | password123 |
-| Student | student@example.com | password123 |
+Default credentials depend on what is seeded into your database. Run the database seed script (`database/schema.sql` or equivalent) to create the default admin user. Check your seed file for the actual default email and password.
 
 ## Response Codes
 

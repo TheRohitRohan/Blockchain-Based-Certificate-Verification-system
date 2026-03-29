@@ -420,9 +420,11 @@ class CertificateService {
         try {
             $existing = $this->getCertificate($certificateId);
             if (!$existing) {
+                error_log("updateCertificate: Certificate not found for ID: {$certificateId}");
                 return ['success' => false, 'error' => 'Certificate not found'];
             }
             if ($existing['status'] === 'revoked') {
+                error_log("updateCertificate: Certificate {$certificateId} is revoked");
                 return ['success' => false, 'error' => 'Cannot update a revoked certificate'];
             }
 
@@ -433,8 +435,30 @@ class CertificateService {
             $updates = array_intersect_key($updateData, array_flip($allowedFields));
 
             if (empty($updates)) {
+                error_log("updateCertificate: No updatable fields for {$certificateId}. Provided: " . json_encode($updateData));
+                $this->db->rollBack();
                 return ['success' => false, 'error' => 'No updatable fields provided'];
             }
+
+            // Build updated data for PDF regeneration
+            $updatedData = array_merge($existing, $updates);
+
+            // Regenerate PDF if course_name or other fields that affect PDF changed
+            $certificateDataForPdf = [
+                'certificate_id' => $certificateId,
+                'student_id' => $existing['student_id'],
+                'student_name' => $existing['student_name'],
+                'course_name' => $updatedData['course_name'],
+                'degree_type' => $updatedData['degree_type'] ?? $existing['degree_type'],
+                'issue_date' => $updatedData['issue_date'] ?? $existing['issue_date'],
+                'university_name' => $existing['university_name'],
+                'university_code' => $existing['university_code']
+            ];
+            
+            // Regenerate PDF
+            $pdfPath = $this->pdfService->generateCertificatePDF($certificateId, $certificateDataForPdf);
+            $pdfFilename = basename($pdfPath);
+            $newPdfHash = $this->pdfService->calculatePDFHash($pdfPath);
 
             // Build SET clause
             $setClauses = [];
@@ -443,6 +467,10 @@ class CertificateService {
                 $setClauses[] = "{$field} = ?";
                 $params[] = $value;
             }
+            $setClauses[] = 'pdf_path = ?';
+            $params[] = $pdfFilename;
+            $setClauses[] = 'pdf_hash = ?';
+            $params[] = $newPdfHash;
             $setClauses[] = 'updated_at = NOW()';
             $params[] = $certificateId;
 
@@ -463,6 +491,7 @@ class CertificateService {
 
         } catch (\Exception $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
+            error_log("updateCertificate Exception for {$certificateId}: " . $e->getMessage() . " | " . $e->getTraceAsString());
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
