@@ -80,3 +80,29 @@ export function getCertificateDownloadUrl(certificateId) {
   const token = localStorage.getItem('certiledger_token') ?? '';
   return `${base}/certificates/download?certificate_id=${encodeURIComponent(certificateId)}&token=${token}`;
 }
+
+/**
+ * Publicly verify a certificate by ID — no authentication required.
+ * Uses the dedicated public endpoint GET /public/verify.
+ *
+ * @param {string} certificateId
+ * @returns {{ valid: boolean, status: string, certificate?: object }}
+ */
+export async function publicVerify(certificateId) {
+  const res = await axiosInstance.get(
+    `/public/verify?certificate_id=${encodeURIComponent(certificateId)}`
+  );
+  return res.data;
+}
+
+/**
+ * Build a public (no-auth) download URL for a certificate PDF.
+ * Uses the public endpoint that doesn't require a JWT token.
+ *
+ * @param {string} certificateId
+ * @returns {string}
+ */
+export function getPublicDownloadUrl(certificateId) {
+  const base = import.meta.env.VITE_API_URL ?? '/api';
+  return `${base}/public/certificate/download?certificate_id=${encodeURIComponent(certificateId)}`;
+}

@@ -46,7 +46,7 @@ export default function WhyCertiLedger() {
   const ref = useScrollReveal();
 
   return (
-    <section id="security" ref={ref} style={{ borderTop: '1px solid #1a1a1a', padding: '7rem 2rem' }}>
+    <section id="security" ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '7rem 2rem' }}>
       <div className="max-w-7xl mx-auto">
 
         {/* Two-column header */}
@@ -68,7 +68,7 @@ export default function WhyCertiLedger() {
                 fontWeight: 700,
                 letterSpacing: '-0.03em',
                 lineHeight: 1,
-                color: '#fff',
+                color: 'var(--text)',
               }}
             >
               Why blockchain?
@@ -76,7 +76,7 @@ export default function WhyCertiLedger() {
           </div>
           <p
             className="sr sr-d2 hidden md:block"
-            style={{ color: '#555', fontSize: '1rem', lineHeight: 1.7, maxWidth: '44ch', alignSelf: 'flex-end' }}
+            style={{ color: 'var(--text2)', fontSize: '1rem', lineHeight: 1.7, maxWidth: '44ch', alignSelf: 'flex-end' }}
           >
             Traditional certificate databases are centralized, mutable, and opaque.
             A blockchain-backed approach removes those failure points entirely.
@@ -88,8 +88,8 @@ export default function WhyCertiLedger() {
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
-            borderTop: '1px solid #1a1a1a',
-            borderLeft: '1px solid #1a1a1a',
+            borderTop: '1px solid var(--border)',
+            borderLeft: '1px solid var(--border)',
           }}
         >
           {properties.map((p, i) => (
@@ -98,12 +98,12 @@ export default function WhyCertiLedger() {
               className={`sr sr-d${i + 1}`}
               style={{
                 padding: '3rem 2.5rem',
-                borderBottom: '1px solid #1a1a1a',
-                borderRight: '1px solid #1a1a1a',
+                borderBottom: '1px solid var(--border)',
+                borderRight: '1px solid var(--border)',
               }}
             >
               {/* Index */}
-              <span className="mono" style={{ color: '#2a2a2a', display: 'block', marginBottom: '2rem' }}>
+              <span className="mono" style={{ color: 'var(--text3)', display: 'block', marginBottom: '2rem' }}>
                 0{i + 1}
               </span>
 
@@ -114,14 +114,14 @@ export default function WhyCertiLedger() {
                   fontWeight: 700,
                   letterSpacing: '-0.02em',
                   marginBottom: '1rem',
-                  color: '#fff',
+                  color: 'var(--text)',
                 }}
               >
                 {p.title}
               </h3>
 
               {/* Body */}
-              <p style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.7 }}>
+              <p style={{ color: 'var(--text2)', fontSize: '0.9rem', lineHeight: 1.7 }}>
                 {p.body}
               </p>
             </div>
@@ -131,7 +131,7 @@ export default function WhyCertiLedger() {
         {/* Comparison strip */}
         <div
           className="sr sr-d5"
-          style={{ marginTop: '4rem', display: 'flex', gap: '0', borderTop: '1px solid #1a1a1a' }}
+          style={{ marginTop: '4rem', display: 'flex', gap: '0', borderTop: '1px solid var(--border)' }}
         >
           {[
             { label: 'Traditional DB', val: 'Mutable · Centralized · Opaque', dim: true },
@@ -142,13 +142,13 @@ export default function WhyCertiLedger() {
               style={{
                 flex: 1,
                 padding: '1.75rem 0',
-                borderRight: '1px solid #1a1a1a',
+                borderRight: '1px solid var(--border)',
               }}
             >
               <div className="label" style={{ marginBottom: '0.5rem' }}>{label}</div>
               <div
                 className="mono"
-                style={{ color: dim ? '#333' : '#888', fontSize: '0.8rem' }}
+                style={{ color: dim ? 'var(--text3)' : 'var(--text2)', fontSize: '0.8rem' }}
               >
                 {val}
               </div>

@@ -37,3 +37,24 @@ export async function createStudent(data) {
   const res = await axiosInstance.post('/students', data);
   return res.data;
 }
+
+/**
+ * Update a student record.
+ * @param {number} id  — student DB record id (not student_id string)
+ * @param {{ full_name?, enrollment_date? }} data
+ * @returns {{ success: boolean }}
+ */
+export async function updateStudent(id, data) {
+  const res = await axiosInstance.put(`/students/${id}`, data);
+  return res.data;
+}
+
+/**
+ * Delete a student (admin or owning university only).
+ * @param {number} id
+ * @returns {{ success: boolean }}
+ */
+export async function deleteStudent(id) {
+  const res = await axiosInstance.delete(`/students/${id}`);
+  return res.data;
+}

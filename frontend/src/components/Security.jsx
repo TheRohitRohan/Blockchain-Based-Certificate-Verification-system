@@ -41,13 +41,13 @@ export default function Security() {
 
                                 {/* Icon — solid color, no gradient */}
                                 <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center mb-6">
-                                    <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-7 h-7" style={{ color: 'var(--bg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                     </svg>
                                 </div>
 
-                                <h3 className="text-lg font-bold text-white mb-1">Smart Contract Security</h3>
-                                <p className="text-slate-500 text-sm mb-6 font-mono">CertificateRegistry.sol</p>
+                                <h3 className="text-lg font-bold mb-1" style={{ color: 'var(--text)' }}>Smart Contract Security</h3>
+                                <p className="text-sm mb-6 font-mono" style={{ color: 'var(--text2)' }}>CertificateRegistry.sol</p>
 
                                 <div className="space-y-3">
                                     {[
@@ -59,24 +59,24 @@ export default function Security() {
                                         'Rate Limiting — Abuse prevention built in',
                                     ].map((check) => (
                                         <div key={check} className="flex items-center gap-3">
-                                            <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border border-accent-500/30"
-                                                style={{ background: 'rgba(52,211,153,0.08)' }}>
-                                                <svg className="w-3 h-3 text-accent-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                                                style={{ background: 'var(--border2)' }}>
+                                                <svg className="w-3 h-3" style={{ color: 'var(--text)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </div>
-                                            <span className="text-sm text-slate-300">{check}</span>
+                                            <span className="text-sm" style={{ color: 'var(--text2)' }}>{check}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Floating badge */}
-                            <div className="absolute -top-4 -right-4 border border-accent-500/20 rounded-xl px-4 py-3 animate-float-delayed"
-                                style={{ background: 'rgba(52,211,153,0.05)', backdropFilter: 'blur(12px)' }}>
+                            <div className="absolute -top-4 -right-4 border rounded-xl px-4 py-3 animate-float-delayed"
+                                style={{ borderColor: 'var(--border)', background: 'var(--surface)', backdropFilter: 'blur(12px)' }}>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-accent-400 animate-pulse" />
-                                    <span className="text-xs font-semibold text-accent-300">Ethereum Secured</span>
+                                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--text)' }} />
+                                    <span className="text-xs font-semibold" style={{ color: 'var(--text2)' }}>Ethereum Secured</span>
                                 </div>
                             </div>
 
@@ -89,14 +89,14 @@ export default function Security() {
                     {/* Right: Content — slides in from right */}
                     <div className="order-1 lg:order-2">
                         <div className="animate-in-right">
-                            <span className="inline-block text-xs font-semibold tracking-widest uppercase text-brand-400 border border-brand-500/20 px-4 py-2 rounded-full mb-6"
-                                style={{ background: 'rgba(99,102,241,0.06)' }}>
+                            <span className="inline-block text-xs font-semibold tracking-widest uppercase border px-4 py-2 rounded-full mb-6"
+                                style={{ color: 'var(--text)', borderColor: 'var(--border)', background: 'var(--surface)' }}>
                                 Security First
                             </span>
-                            <h2 className="text-4xl md:text-5xl font-extrabold text-white mb-6">
-                                Fraud-Proof by <span className="gradient-text">Design</span>
+                            <h2 className="text-4xl md:text-5xl font-extrabold mb-6" style={{ color: 'var(--text)' }}>
+                                Fraud-Proof by <span style={{ color: 'var(--text2)' }}>Design</span>
                             </h2>
-                            <p className="text-slate-400 text-lg mb-8 leading-relaxed">
+                            <p className="text-lg mb-8 leading-relaxed" style={{ color: 'var(--text2)' }}>
                                 Traditional certificates can be faked. CertiLedger makes that impossible. Every certificate's
                                 cryptographic hash is stored permanently on Ethereum — a change of even one character
                                 produces a completely different hash and fails verification instantly.
@@ -123,13 +123,13 @@ export default function Security() {
                             ].map(item => (
                                 <div
                                     key={item.title}
-                                    className="flex gap-4 rounded-xl p-4 border border-white/5 hover:border-brand-500/15 transition-colors duration-200"
-                                    style={{ background: 'rgba(255,255,255,0.02)' }}
+                                    className="flex gap-4 rounded-xl p-4 border transition-colors duration-200"
+                                    style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
                                 >
                                     <div className="text-2xl flex-shrink-0 mt-0.5">{item.icon}</div>
                                     <div>
-                                        <h4 className="text-white font-semibold mb-1">{item.title}</h4>
-                                        <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
+                                        <h4 className="font-semibold mb-1" style={{ color: 'var(--text)' }}>{item.title}</h4>
+                                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text2)' }}>{item.desc}</p>
                                     </div>
                                 </div>
                             ))}

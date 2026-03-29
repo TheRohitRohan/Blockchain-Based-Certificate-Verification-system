@@ -58,7 +58,7 @@ export default function Stats() {
   const [ref, triggered] = useScrollReveal();
 
   return (
-    <section ref={ref} style={{ borderTop: '1px solid #1a1a1a', padding: '6rem 2rem' }}>
+    <section ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '6rem 2rem' }}>
       <div className="max-w-7xl mx-auto">
         {/* Label */}
         <p className="label sr" style={{ marginBottom: '3.5rem' }}>By the numbers</p>
@@ -68,7 +68,7 @@ export default function Stats() {
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(4, 1fr)',
-            borderTop: '1px solid #1a1a1a',
+            borderTop: '1px solid var(--border)',
           }}
         >
           {data.map(({ label, to, suffix }, i) => (
@@ -78,7 +78,7 @@ export default function Stats() {
               style={{
                 padding: '2.5rem 0',
                 paddingRight: '2rem',
-                borderRight: i < data.length - 1 ? '1px solid #1a1a1a' : 'none',
+                borderRight: i < data.length - 1 ? '1px solid var(--border)' : 'none',
                 paddingLeft: i > 0 ? '2rem' : 0,
               }}
             >
@@ -89,7 +89,7 @@ export default function Stats() {
                   fontWeight: 800,
                   letterSpacing: '-0.04em',
                   lineHeight: 1,
-                  color: '#fff',
+                  color: 'var(--text)',
                   marginBottom: '0.75rem',
                   fontVariationSettings: '"wdth" 100',
                 }}
@@ -107,11 +107,11 @@ export default function Stats() {
           style={{
             marginTop: '4rem',
             paddingTop: '2rem',
-            borderTop: '1px solid #1a1a1a',
+            borderTop: '1px solid var(--border)',
             overflow: 'hidden',
           }}
         >
-          <div className="marquee-track mono" style={{ color: '#222', fontSize: '0.7rem', letterSpacing: '0.12em' }}>
+          <div className="marquee-track mono" style={{ color: 'var(--text3)', fontSize: '0.7rem', letterSpacing: '0.12em' }}>
             {[
               'ETHEREUM', '·', 'SOLIDITY ^0.8', '·', 'TRUFFLE', '·',
               'GANACHE', '·', 'WEB3.PHP', '·', 'SHA-256', '·', 'ERC COMPATIBLE', '·',

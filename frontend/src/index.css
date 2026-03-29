@@ -2,6 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ================================================================
+   Theme variables — defined outside @layer so they cascade correctly
+   and [data-theme="light"] wins over Tailwind's @layer base styles.
+   ================================================================ */
+
+/* -- Dark theme (default) ---------------------------------------- */
+:root,
+[data-theme="dark"] {
+  --bg:        #060606;
+  --surface:   #111111;
+  --surface2:  #1a1a1a;
+  --border:    #252525;
+  --border2:   #363636;
+  --text:      #f0f0f0;
+  --text2:     #aaaaaa;
+  --text3:     #777777;
+  --accent:    #ffffff;
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --yellow:    #f59e0b;
+  --blue:      #3b82f6;
+  --sidebar-w: 220px;
+  --radius:    6px;
+  --transition: 0.15s ease;
+}
+
+/* -- Light theme -------------------------------------------------- */
+[data-theme="light"] {
+  --bg:        #f5f5f5;
+  --surface:   #ffffff;
+  --surface2:  #eeeeee;
+  --border:    #dedede;
+  --border2:   #cccccc;
+  --text:      #111111;
+  --text2:     #444444;
+  --text3:     #888888;
+  --accent:    #000000;
+  --green:     #16a34a;
+  --red:       #dc2626;
+  --yellow:    #d97706;
+  --blue:      #2563eb;
+  --sidebar-w: 220px;
+  --radius:    6px;
+  --transition: 0.15s ease;
+}
+
+/* ================================================================
+   Base resets — inside @layer base so Tailwind controls ordering
+   ================================================================ */
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;
@@ -15,8 +64,8 @@
   }
 
   body {
-    background: #000;
-    color: #fff;
+    background: var(--bg);
+    color: var(--text);
     font-family: "Mona Sans", system-ui, sans-serif;
     font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
@@ -25,17 +74,20 @@
   }
 
   ::selection {
-    background: #fff;
-    color: #000;
+    background: var(--text);
+    color: var(--bg);
   }
 
   ::-webkit-scrollbar { width: 1px; }
-  ::-webkit-scrollbar-track { background: #000; }
-  ::-webkit-scrollbar-thumb { background: #333; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
 }
 
+/* ================================================================
+   Utility classes — inside @layer utilities
+   ================================================================ */
 @layer utilities {
-  /* ── Typography ─────────────────────────── */
+  /* -- Typography ------------------------------------------------- */
   .display {
     font-size: clamp(3.5rem, 10vw, 9rem);
     font-weight: 800;
@@ -56,7 +108,7 @@
     font-weight: 500;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #666;
+    color: var(--text2);
   }
 
   .mono {
@@ -65,7 +117,7 @@
     letter-spacing: 0.02em;
   }
 
-  /* ── Scroll reveal ──────────────────────── */
+  /* -- Scroll reveal ---------------------------------------------- */
   .sr {
     opacity: 0;
     transform: translateY(28px);
@@ -105,11 +157,11 @@
   .sr-d5 { transition-delay: 0.33s; }
   .sr-d6 { transition-delay: 0.40s; }
 
-  /* ── Dividers ───────────────────────────── */
-  .rule-x { border-top: 1px solid #1f1f1f; }
-  .rule-l { border-left: 1px solid #1f1f1f; }
+  /* -- Dividers --------------------------------------------------- */
+  .rule-x { border-top: 1px solid var(--border); }
+  .rule-l { border-left: 1px solid var(--border); }
 
-  /* ── Buttons ────────────────────────────── */
+  /* -- Buttons ---------------------------------------------------- */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -124,24 +176,24 @@
   }
 
   .btn-white {
-    background: #fff;
-    color: #000;
+    background: var(--accent);
+    color: var(--bg);
   }
   .btn-white:hover {
-    background: #e0e0e0;
+    opacity: 0.85;
   }
 
   .btn-ghost {
     background: transparent;
-    color: #fff;
-    border: 1px solid #2a2a2a;
+    color: var(--text);
+    border: 1px solid var(--border2);
   }
   .btn-ghost:hover {
-    background: #111;
-    border-color: #444;
+    background: var(--surface);
+    border-color: var(--border);
   }
 
-  /* ── Noise texture overlay ─────────────── */
+  /* -- Noise texture overlay -------------------------------------- */
   .noise::after {
     content: '';
     position: fixed;
@@ -153,7 +205,7 @@
   }
 }
 
-/* ── Text scramble / glitch ──────────────── */
+/* -- Text scramble / caret / marquee (outside @layer) ------------- */
 @keyframes scramble {
   0%  { content: '0xA3f2'; }
   20% { content: '0x7B1c'; }
@@ -163,12 +215,11 @@
   100%{ content: '0xA3f2'; }
 }
 
-/* ── Caret blink ─────────────────────────── */
 .caret::after {
   content: '▋';
   display: inline-block;
   animation: blink 1s step-end infinite;
-  color: #fff;
+  color: var(--text);
 }
 
 @keyframes blink {
@@ -176,7 +227,6 @@
   50%       { opacity: 0; }
 }
 
-/* ── Horizontal marquee ──────────────────── */
 .marquee-track {
   display: flex;
   gap: 4rem;
@@ -186,4 +236,15 @@
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
+}
+
+/* -- Landing page scan line animation ----------------------------- */
+@keyframes scan {
+  0%   { top: -2px; }
+  100% { top: 100%; }
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }

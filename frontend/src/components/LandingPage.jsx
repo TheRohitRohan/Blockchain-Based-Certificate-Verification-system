@@ -9,7 +9,7 @@ import Footer from './Footer';
 
 export default function LandingPage() {
   return (
-    <div className="noise" style={{ background: '#000', minHeight: '100vh' }}>
+    <div className="noise" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
       <Navbar />
       <main>
         <Hero />

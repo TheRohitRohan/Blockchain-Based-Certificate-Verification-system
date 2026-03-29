@@ -5,15 +5,18 @@ import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { DataProvider } from './context/DataContext.jsx'
 import { CertificatesProvider } from './context/CertificatesContext.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthProvider>
-      <DataProvider>
-        <CertificatesProvider>
-          <App />
-        </CertificatesProvider>
-      </DataProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>
+          <CertificatesProvider>
+            <App />
+          </CertificatesProvider>
+        </DataProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </StrictMode>,
 )

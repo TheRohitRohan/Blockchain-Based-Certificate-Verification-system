@@ -23,7 +23,7 @@ export default function CTA() {
   const ref = useScrollReveal();
 
   return (
-    <section id="verify" ref={ref} style={{ borderTop: '1px solid #1a1a1a', padding: '8rem 2rem' }}>
+    <section id="verify" ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '8rem 2rem' }}>
       <div className="max-w-7xl mx-auto">
         <div
           style={{
@@ -43,20 +43,20 @@ export default function CTA() {
                 fontWeight: 800,
                 letterSpacing: '-0.035em',
                 lineHeight: 0.95,
-                color: '#fff',
+                color: 'var(--text)',
                 marginBottom: '2rem',
                 fontVariationSettings: '"wdth" 100',
               }}
             >
               One contract.
               <br />
-              <span style={{ fontWeight: 300, color: '#444' }}>
+              <span style={{ fontWeight: 300, color: 'var(--text3)' }}>
                 Infinite records.
               </span>
             </h2>
             <p
               className="sr sr-d2"
-              style={{ color: '#555', fontSize: '0.95rem', lineHeight: 1.7, maxWidth: '42ch', marginBottom: '2.5rem' }}
+              style={{ color: 'var(--text2)', fontSize: '0.95rem', lineHeight: 1.7, maxWidth: '42ch', marginBottom: '2.5rem' }}
             >
               CertiLedger is open to institutions wanting to pilot blockchain-based certificate issuance.
               We're in active development — early collaborators shape the protocol.
@@ -73,8 +73,8 @@ export default function CTA() {
             <div
               style={{
                 display: 'flex',
-                borderTop: '1px solid #222',
-                borderBottom: '1px solid #222',
+                borderTop: '1px solid var(--border2)',
+                borderBottom: '1px solid var(--border2)',
               }}
             >
               <input
@@ -85,11 +85,11 @@ export default function CTA() {
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
-                  color: '#fff',
+                  color: 'var(--text)',
                   fontSize: '0.9rem',
                   padding: '1rem 0',
                   fontFamily: '"JetBrains Mono", monospace',
-                  caretColor: '#fff',
+                  caretColor: 'var(--text)',
                 }}
               />
               <button
@@ -99,7 +99,7 @@ export default function CTA() {
                 Verify →
               </button>
             </div>
-            <p className="mono" style={{ color: '#2a2a2a', marginTop: '1rem', fontSize: '0.7rem' }}>
+            <p className="mono" style={{ color: 'var(--text3)', marginTop: '1rem', fontSize: '0.7rem' }}>
               Queries live Ethereum. No account needed.
             </p>
           </div>

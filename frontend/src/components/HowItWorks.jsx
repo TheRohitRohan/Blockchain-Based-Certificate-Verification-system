@@ -46,7 +46,7 @@ export default function HowItWorks() {
   const ref = useScrollReveal();
 
   return (
-    <section id="how-it-works" ref={ref} style={{ borderTop: '1px solid #1a1a1a', padding: '7rem 2rem' }}>
+    <section id="how-it-works" ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '7rem 2rem' }}>
       <div className="max-w-7xl mx-auto">
         {/* Section label */}
         <p className="label sr" style={{ marginBottom: '4rem' }}>The protocol</p>
@@ -63,13 +63,13 @@ export default function HowItWorks() {
                 gap: '3rem',
                 alignItems: 'start',
                 padding: '2.5rem 0',
-                borderBottom: '1px solid #1a1a1a',
+                borderBottom: '1px solid var(--border)',
               }}
             >
               {/* Step number */}
               <span
                 className="mono"
-                style={{ color: '#2a2a2a', fontSize: '0.75rem', paddingTop: '0.2rem' }}
+                style={{ color: 'var(--text3)', fontSize: '0.75rem', paddingTop: '0.2rem' }}
               >
                 {step.n}
               </span>
@@ -81,7 +81,7 @@ export default function HowItWorks() {
                   fontWeight: 600,
                   letterSpacing: '-0.02em',
                   lineHeight: 1.2,
-                  color: '#fff',
+                  color: 'var(--text)',
                 }}
               >
                 {step.title}
@@ -90,7 +90,7 @@ export default function HowItWorks() {
               {/* Body */}
               <p
                 style={{
-                  color: '#666',
+                  color: 'var(--text2)',
                   fontSize: '0.95rem',
                   lineHeight: 1.7,
                   maxWidth: '52ch',
@@ -107,15 +107,15 @@ export default function HowItWorks() {
           <div
             className="mono"
             style={{
-              background: '#060606',
-              border: '1px solid #1a1a1a',
+              background: 'var(--surface2)',
+              border: '1px solid var(--border)',
               padding: '1.5rem 2rem',
               display: 'inline-block',
             }}
           >
-            <span style={{ color: '#333' }}>$ </span>
-            <span style={{ color: '#aaa' }}>certiledger verify </span>
-            <span style={{ color: '#666' }}>CERT-ETH-2024-0x7F3A</span>
+            <span style={{ color: 'var(--text3)' }}>$ </span>
+            <span style={{ color: 'var(--text)' }}>certiledger verify </span>
+            <span style={{ color: 'var(--text2)' }}>CERT-ETH-2024-0x7F3A</span>
             <br />
             <span style={{ color: '#2a7', marginLeft: '1rem' }}>✓ valid · block #19,847,203 · immutable</span>
           </div>

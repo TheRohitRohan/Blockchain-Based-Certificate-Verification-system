@@ -17,10 +17,10 @@ function CertBlock() {
 
   return (
     <div
-      className="sr-right mono"
+      className="sr-right mono cert-card-shadow"
       style={{
-        background: '#0a0a0a',
-        border: '1px solid #1f1f1f',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
         padding: '1.5rem',
         width: '100%',
         maxWidth: '380px',
@@ -28,7 +28,7 @@ function CertBlock() {
     >
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <span style={{ color: '#444', fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+        <span style={{ color: 'var(--text3)', fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
           Certificate
         </span>
         <span style={{ color: '#2a7' , fontSize: '0.65rem', letterSpacing: '0.08em' }}>
@@ -45,18 +45,18 @@ function CertBlock() {
         { k: 'block',      v: '#19,847,203' },
       ].map(({ k, v }) => (
         <div key={k} style={{ display: 'flex', gap: '1rem', marginBottom: '0.45rem' }}>
-          <span style={{ color: '#444', flexShrink: 0, width: '6.5rem' }}>{k}</span>
-          <span style={{ color: '#aaa' }}>{v}</span>
+          <span style={{ color: 'var(--text3)', flexShrink: 0, width: '6.5rem' }}>{k}</span>
+          <span style={{ color: 'var(--text)' }}>{v}</span>
         </div>
       ))}
 
       {/* Hash row — animates between values */}
-      <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #1a1a1a' }}>
-        <div style={{ color: '#444', fontSize: '0.65rem', marginBottom: '0.4rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>sha256</div>
+      <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+        <div style={{ color: 'var(--text3)', fontSize: '0.65rem', marginBottom: '0.4rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>sha256</div>
         <div
           key={hash}
           style={{
-            color: '#555',
+            color: 'var(--text2)',
             wordBreak: 'break-all',
             fontSize: '0.7rem',
             animation: 'fade 0.4s ease',
@@ -90,7 +90,7 @@ export default function Hero() {
         padding: '0 2rem 5rem',
         paddingTop: '6rem',
         position: 'relative',
-        background: '#000',
+        background: 'var(--bg)',
         overflow: 'hidden',
       }}
     >
@@ -101,7 +101,7 @@ export default function Hero() {
           position: 'absolute',
           inset: 0,
           backgroundImage:
-            'radial-gradient(circle, #1c1c1c 1px, transparent 1px)',
+            'radial-gradient(circle, var(--border) 1px, transparent 1px)',
           backgroundSize: '36px 36px',
           pointerEvents: 'none',
           opacity: 0.7,
@@ -109,7 +109,7 @@ export default function Hero() {
       />
 
       {/* Horizontal scan line */}
-      <div
+      {/* <div
         aria-hidden
         style={{
           position: 'absolute',
@@ -117,11 +117,11 @@ export default function Hero() {
           right: 0,
           height: '1px',
           background:
-            'linear-gradient(90deg, transparent 0%, #ffffff08 20%, #ffffff14 50%, #ffffff08 80%, transparent 100%)',
+            'linear-gradient(90deg, transparent 0%, var(--border2) 20%, var(--border2) 50%, var(--border2) 80%, transparent 100%)',
           animation: 'scan 6s linear infinite',
           pointerEvents: 'none',
         }}
-      />
+      /> */}
 
       <div
         className="max-w-7xl mx-auto w-full"
@@ -155,7 +155,7 @@ export default function Hero() {
           >
             Certificates
             <br />
-            <span style={{ fontWeight: 300, color: '#555', letterSpacing: '-0.03em' }}>
+            <span style={{ fontWeight: 300, color: 'var(--text2)', letterSpacing: '-0.03em' }}>
               on&#8209;chain.
             </span>
           </h1>
@@ -165,7 +165,7 @@ export default function Hero() {
             className="sr sr-d3"
             style={{
               fontSize: '1.125rem',
-              color: '#666',
+              color: 'var(--text2)',
               maxWidth: '44ch',
               lineHeight: 1.65,
               fontWeight: 400,
@@ -179,7 +179,7 @@ export default function Hero() {
 
           {/* Actions */}
           <div className="sr sr-d4" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <a href="#" className="btn btn-white">Issue a certificate</a>
+            <a href="/login" className="btn btn-white">Login</a>
             <a href="#verify" className="btn btn-ghost">Verify →</a>
           </div>
         </div>
@@ -198,7 +198,7 @@ export default function Hero() {
           gap: '2rem',
           marginTop: '4rem',
           paddingTop: '2rem',
-          borderTop: '1px solid #1a1a1a',
+          borderTop: '1px solid var(--border)',
           position: 'relative',
           zIndex: 1,
         }}
@@ -210,8 +210,8 @@ export default function Hero() {
           { label: 'License', value: 'MIT' },
         ].map(({ label, value }) => (
           <div key={label}>
-            <div className="label" style={{ marginBottom: '0.3rem' }}>{label}</div>
-            <div className="mono" style={{ color: '#888' }}>{value}</div>
+            <div className="label" style={{ marginBottom: '0.3rem', color: 'var(--text3)' }}>{label}</div>
+            <div className="mono" style={{ color: 'var(--text2)' }}>{value}</div>
           </div>
         ))}
       </div>
