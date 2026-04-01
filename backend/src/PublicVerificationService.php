@@ -143,6 +143,18 @@ class PublicVerificationService {
                 'stored_certificate'     => $storedCertificate,
                 'stored_certificate_pdf' => $storedPdfData,
                 'differences'            => $differences,
+
+                // Complete certificate info block for frontend display.
+                // Contains identity, status, blockchain anchoring, original PDF,
+                // and a visual verification note — everything the verifier needs
+                // to confirm the certificate is legitimate.
+                'certificate_info'   => $this->buildCertificateInfo($storedCertificate, $storedPdfData),
+
+                // Hash mismatch advisory from VerificationEngine — null if hash matched
+                'hash_mismatch_advisory' => $verificationResult['hash_mismatch_advisory'] ?? null,
+
+                // Verified fields straight from DB for quick display
+                'verified_fields'    => $verificationResult['verified_fields'] ?? [],
             ];
             
         } catch (\Exception $e) {
@@ -181,7 +193,12 @@ class PublicVerificationService {
             'verification_result' => $verificationResult,
             'stored_certificate' => $storedCertificate,
             'stored_certificate_pdf' => $storedPdfData,
-            'certificate_id' => $certificateId
+            'certificate_id' => $certificateId,
+
+            // Complete certificate info block for frontend display.
+            // Same structure as the PDF upload flow so the frontend
+            // can use the same component for both verification paths.
+            'certificate_info' => $this->buildCertificateInfo($storedCertificate, $storedPdfData),
         ];
     }
     
@@ -206,22 +223,24 @@ class PublicVerificationService {
         $stmt->execute([$certificateId]);
         $certificate = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($certificate) {
-            // Parse metadata JSON if exists
-            if (!empty($certificate['metadata_json'])) {
-                $certificate['metadata'] = json_decode($certificate['metadata_json'], true);
-            }
-            // Strip raw metadata JSON string and internal DB fields from public response
-            unset($certificate['metadata_json']);
-            unset($certificate['pdf_hash']);
-            unset($certificate['metadata_hash']);
-            unset($certificate['onchain_hash']);
-            unset($certificate['block_number']);
-            unset($certificate['chain_id']);
-            unset($certificate['schema_version']);
-            unset($certificate['revoked_by']);
-            unset($certificate['id']);
+        if (!$certificate) {
+            return null;
         }
+        
+        // Parse metadata JSON if exists
+        if (!empty($certificate['metadata_json'])) {
+            $certificate['metadata'] = json_decode($certificate['metadata_json'], true);
+        }
+        // Strip raw metadata JSON string and internal DB fields from public response
+        unset($certificate['metadata_json']);
+        unset($certificate['pdf_hash']);
+        unset($certificate['metadata_hash']);
+        unset($certificate['onchain_hash']);
+        unset($certificate['block_number']);
+        unset($certificate['chain_id']);
+        unset($certificate['schema_version']);
+        unset($certificate['revoked_by']);
+        unset($certificate['id']);
         
         return $certificate;
     }
@@ -287,13 +306,13 @@ class PublicVerificationService {
             $conclusion['details'][] = 'PDF hash matches stored record';
             $conclusion['details'][] = 'Blockchain verification passed';
         } elseif ($isValid && !$metadataMatch) {
-            $conclusion['summary'] = 'Certificate is valid but has some differences';
-            $conclusion['details'][] = 'Certificate exists and is not revoked';
-            $conclusion['details'][] = 'Some metadata fields do not match';
+            $conclusion['summary'] = 'Certificate record is valid but uploaded metadata differs';
+            $conclusion['details'][] = 'The core certificate identity exists and is not revoked';
+            $conclusion['details'][] = 'WARNING: Some metadata fields in the uploaded PDF do NOT match the securely stored version';
         } elseif ($isValid && !$pdfHashMatch) {
-            $conclusion['summary'] = 'Certificate is valid but PDF content differs';
-            $conclusion['details'][] = 'Certificate exists and is not revoked';
-            $conclusion['details'][] = 'PDF file content does not match stored version';
+            $conclusion['summary'] = 'Certificate record is valid but uploaded PDF differs';
+            $conclusion['details'][] = 'The core certificate identity exists and is not revoked';
+            $conclusion['details'][] = 'WARNING: The uploaded PDF file content does NOT match the securely stored version';
         } else {
             $conclusion['summary'] = 'Certificate verification failed';
             $conclusion['details'][] = 'One or more verification checks failed';
@@ -485,5 +504,75 @@ class PublicVerificationService {
         ];
         
         return $fieldNames[$field] ?? ucfirst(str_replace('_', ' ', $field));
+    }
+
+    /**
+     * Build a clean, complete certificate info block for frontend display.
+     *
+     * This is the authoritative data the frontend should display to the verifier
+     * regardless of whether the PDF hash matched or not. It contains everything
+     * needed to visually verify the certificate — who it was issued to, what for,
+     * when, by whom, and the cryptographic anchoring status.
+     *
+     * Intentionally excludes raw hashes and internal fields — those are in
+     * the checks block. This block is for human-readable display.
+     */
+    private function buildCertificateInfo(?array $storedCertificate, ?array $storedPdfData): array
+    {
+        if (!$storedCertificate) {
+            return [];
+        }
+
+        return [
+            // Core identity — what the verifier needs to confirm visually
+            'identity' => [
+                'certificate_id'  => $storedCertificate['certificate_id']  ?? null,
+                'student_name'    => $storedCertificate['student_name']    ?? null,
+                'student_id'      => $storedCertificate['student_id']      ?? null,
+                'course_name'     => $storedCertificate['course_name']     ?? null,
+                'degree_type'     => $storedCertificate['degree_type']     ?? null,
+                'issue_date'      => $storedCertificate['issue_date']      ?? null,
+                'university_name' => $storedCertificate['university_name'] ?? null,
+                'university_code' => $storedCertificate['university_code'] ?? null,
+            ],
+
+            // Status and lifecycle
+            'status' => [
+                'current_status'   => $storedCertificate['status']             ?? 'unknown',
+                'is_revoked'       => (bool)($storedCertificate['is_revoked']  ?? false),
+                'revoked_at'       => $storedCertificate['revoked_at']          ?? null,
+                'issued_at'        => $storedCertificate['created_at']          ?? null,
+                'last_updated'     => $storedCertificate['updated_at']          ?? null,
+                'signature_status' => (bool)($storedCertificate['signature_status'] ?? false),
+            ],
+
+            // Blockchain anchoring — tells verifier if it is on-chain
+            'blockchain' => [
+                'tx_hash'     => $storedCertificate['blockchain_tx_hash'] ?? null,
+                'is_anchored' => !empty($storedCertificate['blockchain_tx_hash']),
+                'anchor_note' => !empty($storedCertificate['blockchain_tx_hash'])
+                                    ? 'This certificate is anchored on the Ethereum blockchain.'
+                                    : 'This certificate was not anchored on the blockchain at issuance.',
+            ],
+
+            // Original PDF — always include so frontend can render it inline
+            'original_pdf' => $storedPdfData ? [
+                'available'    => true,
+                'filename'     => $storedPdfData['filename']     ?? null,
+                'size'         => $storedPdfData['size']         ?? null,
+                'download_url' => $storedPdfData['download_url'] ?? null,
+                'view_url'     => $storedPdfData['view_url']     ?? null,
+                'base64'       => $storedPdfData['base64']       ?? null,
+            ] : [
+                'available' => false,
+                'note'      => 'Original certificate PDF is not available in our storage.',
+            ],
+
+            // Instruction for the human verifier
+            'visual_verification_note' => 'Please confirm that the name, course, issue date, '
+                . 'and university shown above match what is printed on the certificate '
+                . 'you received. You can view the original certificate we have on record '
+                . 'using the link above.',
+        ];
     }
 }

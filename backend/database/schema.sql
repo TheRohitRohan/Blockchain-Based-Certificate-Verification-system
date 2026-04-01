@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS certificates (
     issue_date DATE NOT NULL,
     certificate_hash VARCHAR(255) NOT NULL,
     blockchain_tx_hash VARCHAR(255),
+    blockchain_status ENUM('pending', 'submitted', 'anchored', 'failed', 'mock') NOT NULL DEFAULT 'pending' COMMENT 'Async anchoring lifecycle status',
+    blockchain_submitted_at TIMESTAMP NULL DEFAULT NULL COMMENT 'When tx was submitted to chain',
+    blockchain_anchored_at TIMESTAMP NULL DEFAULT NULL COMMENT 'When tx was confirmed on chain',
+    blockchain_attempts INT NOT NULL DEFAULT 0 COMMENT 'Number of anchoring attempts',
+    blockchain_error TEXT NULL DEFAULT NULL COMMENT 'Last error message if failed',
     pdf_path VARCHAR(500),
     qr_code_path VARCHAR(500),
     status ENUM('active', 'revoked', 'expired') DEFAULT 'active',
@@ -99,7 +104,9 @@ CREATE TABLE IF NOT EXISTS certificates (
     INDEX idx_metadata_hash (metadata_hash),
     INDEX idx_block_number (block_number),
     -- Compound index for common verification queries
-    INDEX idx_cert_status (certificate_id, status)
+    INDEX idx_cert_status (certificate_id, status),
+    -- Index for async blockchain anchoring cron job
+    INDEX idx_blockchain_status (blockchain_status, blockchain_attempts, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Verification logs table
@@ -123,7 +130,7 @@ CREATE TABLE IF NOT EXISTS university_keys (
     id INT AUTO_INCREMENT PRIMARY KEY,
     university_id INT NOT NULL,
     certificate_path VARCHAR(500) NOT NULL COMMENT 'Path to .p12 certificate file',
-    certificate_password VARCHAR(255) NOT NULL COMMENT 'Encrypted password for certificate',
+    certificate_password LONGTEXT NOT NULL COMMENT 'Encrypted password for certificate',
     public_key_pem TEXT NULL COMMENT 'RSA public key in PEM format',
     key_fingerprint VARCHAR(64) NULL COMMENT 'SHA256 fingerprint of the public key',
     is_active BOOLEAN DEFAULT TRUE,

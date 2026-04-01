@@ -1,0 +1,148 @@
+=== Production Database Analysis ===
+
+--- TABLE SCHEMAS ---
+
+Table: users
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  username                  varchar(100)         NOT NULL UNI
+  email                     varchar(255)         NOT NULL UNI
+  password_hash             varchar(255)         NOT NULL 
+  role                      enum('admin','university','student') NOT NULL MUL
+  full_name                 varchar(255)         NULL 
+  university_id             int                  NULL MUL
+  wallet_address            varchar(42)          NULL 
+  created_at                timestamp            NULL 
+  updated_at                timestamp            NULL 
+
+Table: universities
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  name                      varchar(255)         NOT NULL 
+  code                      varchar(50)          NOT NULL UNI
+  address                   text                 NULL 
+  contact_email             varchar(255)         NULL 
+  contact_phone             varchar(50)          NULL 
+  wallet_address            varchar(42)          NULL 
+  signing_cert_path         varchar(500)         NULL 
+  signing_cert_password_encrypted varchar(255)         NULL 
+  is_active                 tinyint(1)           NULL 
+  created_at                timestamp            NULL 
+  updated_at                timestamp            NULL 
+
+Table: university_keys
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  university_id             int                  NOT NULL MUL
+  certificate_path          varchar(500)         NOT NULL 
+  certificate_password      longtext             NOT NULL 
+  public_key_pem            text                 NULL 
+  key_fingerprint           varchar(64)          NULL UNI
+  is_active                 tinyint(1)           NULL MUL
+  created_at                timestamp            NULL 
+  updated_at                timestamp            NULL 
+
+Table: students
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  user_id                   int                  NOT NULL MUL
+  student_id                varchar(100)         NOT NULL UNI
+  university_id             int                  NOT NULL MUL
+  date_of_birth             date                 NULL 
+  enrollment_date           date                 NULL 
+  created_at                timestamp            NULL 
+  updated_at                timestamp            NULL 
+
+Table: certificates
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  certificate_id            varchar(255)         NOT NULL UNI
+  student_id                int                  NOT NULL MUL
+  university_id             int                  NOT NULL MUL
+  course_name               varchar(255)         NOT NULL 
+  degree_type               varchar(100)         NULL 
+  issue_date                date                 NOT NULL 
+  certificate_hash          varchar(255)         NOT NULL MUL
+  blockchain_tx_hash        varchar(255)         NULL 
+  blockchain_status         enum('pending','submitted','anchored','failed','mock') NOT NULL 
+  blockchain_submitted_at   timestamp            NULL 
+  blockchain_anchored_at    timestamp            NULL 
+  blockchain_attempts       int                  NOT NULL 
+  blockchain_error          text                 NULL 
+  pdf_path                  varchar(500)         NULL 
+  qr_code_path              varchar(500)         NULL 
+  status                    enum('active','revoked','expired') NULL MUL
+  revoked_at                timestamp            NULL 
+  revoked_by                int                  NULL MUL
+  created_at                timestamp            NULL 
+  updated_at                timestamp            NULL 
+  metadata_hash             varchar(66)          NULL MUL
+  pdf_hash                  varchar(66)          NULL MUL
+  onchain_hash              varchar(66)          NULL MUL
+  signature_status          tinyint(1)           NULL 
+  metadata_json             json                 NULL 
+  block_number              bigint               NULL MUL
+  chain_id                  int                  NULL 
+  schema_version            varchar(10)          NULL 
+  is_revoked                tinyint(1)           NULL 
+
+Table: verification_logs
+------------------------------------------------------------
+  id                        int                  NOT NULL PRI
+  certificate_ref_id        int                  NULL MUL
+  certificate_id            varchar(255)         NOT NULL MUL
+  verifier_ip               varchar(45)          NULL 
+  verification_method       enum('certificate_id','hash','qr_code','upload','signature') NOT NULL 
+  verification_result       enum('valid','invalid','revoked','not_found') NOT NULL 
+  verification_details      json                 NULL 
+  verified_at               timestamp            NULL MUL
+
+
+--- ROW COUNTS ---
+  users                     48 records
+  universities              28 records
+  university_keys           23 records
+  students                  27 records
+  certificates              26 records
+  verification_logs         32 records
+
+
+--- USERS BREAKDOWN ---
+  Role: admin           Count: 2
+  Role: university      Count: 2
+  Role: student         Count: 44
+
+
+--- UNIVERSITIES ---
+  ID:1   Name:Harvard University             Code:HARV            Email:admin@harvard.edu              Created:2026-03-29 06:00:53
+  ID:2   Name:Stanford University            Code:STAN            Email:admin@stanford.edu             Created:2026-03-29 06:00:56
+  ID:3   Name:MIT                            Code:MIT             Email:admin@mit.edu                  Created:2026-03-29 06:01:00
+  ID:7   Name:Test University                Code:TST69c92caeeea7d Email:test@test.com                  Created:2026-03-29 13:44:16
+  ID:10  Name:Harvard University             Code:HARV459f        Email:admin@harvard.edu              Created:2026-03-29 13:45:06
+  ID:11  Name:Harvard University             Code:HARV7111        Email:admin@harvard.edu              Created:2026-03-29 13:45:31
+  ID:12  Name:Harvard University             Code:HARVe66c        Email:admin@harvard.edu              Created:2026-03-29 13:45:59
+  ID:13  Name:Harvard University             Code:HARV2020        Email:admin@harvard.edu              Created:2026-03-29 13:46:15
+  ID:14  Name:Harvard University             Code:HARVe731        Email:admin@harvard.edu              Created:2026-03-29 13:47:24
+  ID:15  Name:Harvard University             Code:HARV6e82        Email:admin@harvard.edu              Created:2026-03-29 13:48:01
+  ID:16  Name:Harvard University             Code:HARV31b5        Email:admin@harvard.edu              Created:2026-03-29 13:48:31
+  ID:17  Name:Harvard University             Code:HARV9627        Email:admin@harvard.edu              Created:2026-03-29 13:49:33
+  ID:18  Name:Harvard University             Code:HARVe679        Email:admin@harvard.edu              Created:2026-03-29 13:50:20
+  ID:19  Name:MIT                            Code:MITe687         Email:admin@mit.edu                  Created:2026-03-29 13:50:38
+  ID:20  Name:Stanford University            Code:STANe689        Email:admin@stanford.edu             Created:2026-03-29 13:50:50
+  ID:21  Name:Berkeley University            Code:BERKe68a        Email:admin@berkeley.edu             Created:2026-03-29 13:51:00
+  ID:22  Name:Yale University                Code:YALEe68b        Email:admin@yale.edu                 Created:2026-03-29 13:51:12
+  ID:23  Name:Harvard University             Code:HARV4774        Email:admin@harvard.edu              Created:2026-03-29 13:51:43
+  ID:24  Name:MIT                            Code:MIT477e         Email:admin@mit.edu                  Created:2026-03-29 13:51:50
+  ID:25  Name:Stanford University            Code:STAN4780        Email:admin@stanford.edu             Created:2026-03-29 13:52:50
+  ID:26  Name:Berkeley University            Code:BERK4781        Email:admin@berkeley.edu             Created:2026-03-29 13:53:02
+  ID:27  Name:Yale University                Code:YALE4782        Email:admin@yale.edu                 Created:2026-03-29 13:53:14
+  ID:28  Name:University of Technology       Code:UOT1bd5         Email:admin@uot.edu                  Created:2026-03-29 14:05:07
+  ID:29  Name:Harvard University             Code:HARV1be1        Email:admin@harvard.edu              Created:2026-03-29 14:05:13
+  ID:30  Name:MIT                            Code:MIT1be3         Email:admin@mit.edu                  Created:2026-03-29 14:05:25
+  ID:31  Name:Stanford University            Code:STAN1be4        Email:admin@stanford.edu             Created:2026-03-29 14:05:37
+  ID:32  Name:Berkeley University            Code:BERK1be5        Email:admin@berkeley.edu             Created:2026-03-29 14:05:49
+  ID:33  Name:Yale University                Code:YALE1be6        Email:admin@yale.edu                 Created:2026-03-29 14:06:01
+
+
+--- UNIVERSITY KEYS ---
+Database error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'algorithm' in 'field list'

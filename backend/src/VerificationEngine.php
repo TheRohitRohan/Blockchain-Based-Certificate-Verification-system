@@ -147,6 +147,24 @@ class VerificationEngine {
 
             $status = $isValid ? 'valid' : 'invalid';
 
+            // Build hash mismatch advisory when PDF binary has changed.
+            // This happens when a legitimate certificate is modified, tampered with,
+            // or re-saved. A modified binary means the cryptographic signature is voided.
+            // We must treat the uploaded document as untrustworthy and direct the verifier
+            // solely to our authoritative stored record.
+            $hashMismatchAdvisory = null;
+            if (!$pdfHashMatch) {
+                $hashMismatchAdvisory = [
+                    'title'   => 'PDF Verification Failed: Content Mismatch',
+                    'message' => 'The binary content of the uploaded PDF does not match '
+                               . 'the original authentic certificate stored in our system. '
+                               . 'Because the file has been altered or tampered with after issuance, '
+                               . 'we cannot cryptographically verify this document.',
+                    'action'  => 'Do NOT trust the uploaded document. Please view the original, '
+                               . 'unaltered university record below to verify the true credentials.',
+                ];
+            }
+
             $result = [
                 'valid'                => $isValid,
                 'status'               => $status,
@@ -155,13 +173,13 @@ class VerificationEngine {
                                             $pdfHashMatch, $blockchainValid ?? false
                                           ),
                 'checks'               => [
-                    'metadata_match'   => $comparison['matches'],
-                    'pdf_hash_match'   => $pdfHashMatch,
-                    'blockchain_valid' => $blockchainValid,
-                    'blockchain_connected' => $blockchainConnected,
-                    'signature_valid'  => $signatureOk,
-                    'signature_required' => $signatureRequired,
-                    'not_revoked'      => true,
+                    'metadata_match'      => $comparison['matches'],
+                    'pdf_hash_match'      => $pdfHashMatch,
+                    'blockchain_valid'    => $blockchainValid,
+                    'blockchain_connected'=> $blockchainConnected,
+                    'signature_valid'     => $signatureOk,
+                    'signature_required'  => $signatureRequired,
+                    'not_revoked'         => true,
                 ],
                 'metadata_differences' => $comparison['differences'] ?? [],
                 'signature'            => $signatureResult,
@@ -170,6 +188,32 @@ class VerificationEngine {
                 'blockchain_valid'     => $blockchainValid,
                 'certificate'          => $this->sanitizeDbRecord($dbRecord),
                 'extracted_metadata'   => $extractedMetadata,
+
+                // Verified field values straight from the database — the authoritative record.
+                // Frontend should display these prominently so the verifier can
+                // confirm they match what is visually printed on the document.
+                'verified_fields'      => [
+                    'certificate_id'  => $dbRecord['certificate_id'],
+                    'student_name'    => $dbRecord['student_name']    ?? '',
+                    'student_id'      => $dbRecord['student_id']      ?? '',
+                    'course_name'     => $dbRecord['course_name']     ?? '',
+                    'degree_type'     => $dbRecord['degree_type']     ?? '',
+                    'issue_date'      => $dbRecord['issue_date']      ?? '',
+                    'university_name' => $dbRecord['university_name'] ?? '',
+                ],
+
+                // Original certificate download URL — send this to the frontend
+                // so the verifier can view the original and compare it visually
+                // against the document they received. Always present regardless
+                // of hash match result.
+                'original_certificate' => [
+                    'download_url'   => '/api/public/certificate/download?certificate_id='
+                                      . urlencode($certificateId),
+                    'certificate_id' => $certificateId,
+                ],
+
+                // Only present when hash does not match. Null when hash is fine.
+                'hash_mismatch_advisory' => $hashMismatchAdvisory,
             ];
 
             // Cache the RESULT (not bypassed) so ID-only verification can reuse it
@@ -378,7 +422,11 @@ class VerificationEngine {
                 c.chain_id,
                 c.schema_version,
                 c.is_revoked as original_is_revoked,
-                CASE WHEN c.status = 'revoked' OR c.is_revoked = 1 THEN 1 ELSE 0 END as is_revoked
+                CASE WHEN c.status = 'revoked' OR c.is_revoked = 1 THEN 1 ELSE 0 END as is_revoked,
+                s.student_id,
+                u.full_name as student_name,
+                un.name as university_name,
+                un.code as university_code
             FROM certificates c
             JOIN students s ON c.student_id = s.id
             JOIN users u ON s.user_id = u.id

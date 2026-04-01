@@ -256,29 +256,44 @@ class SignatureService
     // =========================================================================
 
     /**
-     * FIXED: Encrypt private key using AES-256-CBC with random IV.
-     * Format: base64_encode(IV || '::' || encryptedPem)
-     * where IV is 16 bytes (128-bit).
+     * Derive a 32-byte AES key from the configured secret.
+     * If the secret is shorter than 32 chars, SHA256 is used to expand it.
+     * This method is the single source of truth for key derivation so encrypt
+     * and decrypt always use the exact same bytes.
      */
-    private function encryptPrivateKey(string $privateKeyPem): string
+    private function getEncryptionSecret(): string
     {
         $secret = $this->config['signing']['key_encryption_secret'] ?? '';
         if (strlen($secret) < 32) {
-            // Fallback: use SHA256 of secret to get 32 bytes
-            $secret = hash('sha256', $secret, true);
-        } else {
-            $secret = substr($secret, 0, 32);
+            return hash('sha256', $secret, true); // 32 raw bytes
         }
+        return substr($secret, 0, 32);
+    }
 
-        // Generate random 16-byte IV
-        $iv = openssl_random_pseudo_bytes(16);
+    /**
+     * Encrypt private key using AES-256-CBC with a random IV.
+     *
+     * Storage format: base64(IV) . '.' . base64(ciphertext)
+     *
+     * Both halves are individually base64-encoded before joining with '.'.
+     * Because base64 output only uses [A-Za-z0-9+/=], the '.' delimiter
+     * can never appear inside either half, making the split unambiguous
+     * regardless of what the raw IV bytes contain.
+     *
+     * This replaces the old format base64_encode(rawIV . '::' . rawCiphertext)
+     * where '::' could accidentally appear inside the raw binary IV, causing
+     * explode() to split at the wrong position.
+     */
+    private function encryptPrivateKey(string $privateKeyPem): string
+    {
+        $secret = $this->getEncryptionSecret();
+        $iv     = openssl_random_pseudo_bytes(16);
 
-        // Encrypt with AES-256-CBC
         $encrypted = openssl_encrypt(
             $privateKeyPem,
             'AES-256-CBC',
             $secret,
-            OPENSSL_RAW_DATA,  // No base64 yet; we'll do it ourselves
+            OPENSSL_RAW_DATA,
             $iv
         );
 
@@ -286,64 +301,85 @@ class SignatureService
             throw new \Exception("Failed to encrypt private key: " . openssl_error_string());
         }
 
-        // Format: base64_encode(IV || '::' || encrypted)
-        return base64_encode($iv . '::' . $encrypted);
+        // Store as: base64(iv) + '.' + base64(ciphertext)
+        return base64_encode($iv) . '.' . base64_encode($encrypted);
     }
 
     /**
-     * FIXED: Decrypt private key using AES-256-CBC.
-     * Expects format: base64_encode(IV || '::' || encryptedPem)
-     * 
-     * FIXED: Also handles old-format plain base64 keys (legacy support with warning).
+     * Decrypt private key stored by encryptPrivateKey().
+     *
+     * Handles three formats in order:
+     *   1. New format  — base64(iv) . '.' . base64(ciphertext)  [current]
+     *   2. Old format  — base64_encode(rawIV . '::' . rawCiphertext) [previous]
+     *   3. Legacy PEM  — plain base64_encode(privateKeyPem) [very old]
+     *
+     * After detecting the old or legacy format a warning is logged so the
+     * key can be regenerated with the new format.
      */
-    private function decryptPrivateKey(string $encryptedKeyB64): ?string
+    private function decryptPrivateKey(string $storedValue): ?string
     {
         try {
-            $data = base64_decode($encryptedKeyB64);
-            if ($data === false) {
-                throw new \Exception("Invalid base64 format");
-            }
+            $secret = $this->getEncryptionSecret();
 
-            // Extract IV and encrypted data
-            $parts = explode('::', $data, 2);
-            if (count($parts) !== 2) {
-                // Possibly old-format base64-only key — try legacy decode
-                // Old keys stored as plain PEM without encryption
-                $privateKey = openssl_pkey_get_private($data);
-                if ($privateKey) {
-                    error_log("Warning: University key is using old unencrypted format — regenerate it for security");
-                    return $data; // Return the PEM directly
+            // ── Strategy 1: New format — base64(iv) . '.' . base64(ciphertext) ──
+            // Count dots to distinguish from base64 strings which never contain '.'
+            if (substr_count($storedValue, '.') === 1) {
+                [$ivB64, $ciphertextB64] = explode('.', $storedValue, 2);
+
+                $iv         = base64_decode($ivB64, true);
+                $ciphertext = base64_decode($ciphertextB64, true);
+
+                if ($iv !== false && $ciphertext !== false && strlen($iv) === 16) {
+                    $decrypted = openssl_decrypt(
+                        $ciphertext,
+                        'AES-256-CBC',
+                        $secret,
+                        OPENSSL_RAW_DATA,
+                        $iv
+                    );
+
+                    if ($decrypted !== false) {
+                        return $decrypted;
+                    }
                 }
-                throw new \Exception("Invalid encrypted key format (missing separator) and not valid PEM");
+                // Fall through to other strategies if this didn't work
             }
 
-            list($iv, $encrypted) = $parts;
+            // ── Strategy 2: Old format — base64_encode(rawIV . '::' . rawCiphertext) ──
+            $raw = base64_decode($storedValue, true);
+            if ($raw !== false && strpos($raw, '::') !== false) {
+                // Find the FIRST occurrence of '::' and treat everything before it
+                // as the IV. Only accept it if that gives exactly 16 bytes.
+                $separatorPos = strpos($raw, '::');
+                if ($separatorPos === 16) {
+                    $iv         = substr($raw, 0, 16);
+                    $ciphertext = substr($raw, 18); // skip 16 bytes IV + 2 bytes '::'
 
-            if (strlen($iv) !== 16) {
-                throw new \Exception("Invalid IV length (expected 16 bytes)");
+                    $decrypted = openssl_decrypt(
+                        $ciphertext,
+                        'AES-256-CBC',
+                        $secret,
+                        OPENSSL_RAW_DATA,
+                        $iv
+                    );
+
+                    if ($decrypted !== false) {
+                        error_log("Warning: University key uses old binary-separator format — regenerate it");
+                        return $decrypted;
+                    }
+                }
             }
 
-            $secret = $this->config['signing']['key_encryption_secret'] ?? '';
-            if (strlen($secret) < 32) {
-                $secret = hash('sha256', $secret, true);
-            } else {
-                $secret = substr($secret, 0, 32);
+            // ── Strategy 3: Legacy plain base64(PEM) ──
+            if ($raw !== false) {
+                $trimmed = trim($raw);
+                if (str_starts_with($trimmed, '-----BEGIN')) {
+                    error_log("Warning: University key is stored as unencrypted PEM — regenerate it");
+                    return $trimmed;
+                }
             }
 
-            // Decrypt
-            $decrypted = openssl_decrypt(
-                $encrypted,
-                'AES-256-CBC',
-                $secret,
-                OPENSSL_RAW_DATA,
-                $iv
-            );
-
-            if ($decrypted === false) {
-                throw new \Exception("Decryption failed: " . openssl_error_string());
-            }
-
-            return $decrypted;
+            throw new \Exception("All decryption strategies failed — key may be corrupt or wrong secret");
 
         } catch (\Exception $e) {
             error_log("Private key decryption error: " . $e->getMessage());

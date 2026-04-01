@@ -9,12 +9,19 @@ $dotenv->safeLoad();
 
 header('Content-Type: application/json');
 
+// Prevent PHP from timing out during slow blockchain transactions
+set_time_limit(0);
+
 // CORS Configuration
 $allowedOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost',
+    'http://localhost:8000',
     'http://127.0.0.1',
+    'http://127.0.0.1:8000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     getenv('FRONTEND_URL') ?: '',
 ];
 
@@ -22,17 +29,29 @@ $allowedOrigins = [
 $allowedOrigins = array_values(array_filter($allowedOrigins));
 
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$appEnv = getenv('APP_ENV') ?: 'production';
+$allowedOriginsList = getenv('ALLOWED_ORIGINS') ? explode(',', getenv('ALLOWED_ORIGINS')) : $allowedOrigins;
+
+// Trim whitespace from allowed origins
+$allowedOriginsList = array_map('trim', $allowedOriginsList);
 
 $isLocalhost = preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $requestOrigin);
 
-if (!empty($requestOrigin) && (in_array($requestOrigin, $allowedOrigins, true) || $isLocalhost)) {
-    header('Access-Control-Allow-Origin: ' . $requestOrigin);
-} elseif (empty($requestOrigin)) {
-    // For local/development without origin (e.g., file://, direct API calls)
+// In development, allow all origins.
+if ($appEnv === 'local' || $appEnv === 'development') {
     header('Access-Control-Allow-Origin: *');
+} elseif (empty($requestOrigin)) {
+    // No origin header (e.g., Postman, curl, server-to-server) - allow
+    header('Access-Control-Allow-Origin: *');
+} elseif ($isLocalhost) {
+    // Always allow localhost in any environment (for local development)
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
+} elseif (in_array($requestOrigin, $allowedOriginsList, true)) {
+    // Request has valid origin and it's whitelisted
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
 } else {
-    // Default to first allowed origin or wildcard
-    header('Access-Control-Allow-Origin: ' . (reset($allowedOrigins) ?: '*'));
+    // Request has origin but not whitelisted - allow first in list
+    header('Access-Control-Allow-Origin: ' . (reset($allowedOriginsList) ?: '*'));
 }
 
 header('Vary: Origin');
@@ -541,7 +560,14 @@ switch ($path) {
             
             try {
                 $result = $certService->listCertificates($filters, $page, $perPage);
-                echo json_encode(['success' => true, 'certificates' => $result['data'], 'total' => $result['total'], 'page' => $page]);
+                echo json_encode([
+                    'success'      => true,
+                    'certificates' => $result['certificates'],
+                    'total'        => $result['pagination']['total'] ?? 0,
+                    'page'         => $page,
+                    'per_page'     => $perPage,
+                    'pages'        => $result['pagination']['pages'] ?? 1,
+                ]);
             } catch (\Exception $e) {
                 http_response_code(500);
                 echo json_encode(['error' => 'Failed to list certificates']);
