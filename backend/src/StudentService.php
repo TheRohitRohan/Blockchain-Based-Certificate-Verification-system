@@ -7,20 +7,29 @@ use PDO;
 class StudentService {
     private $db;
 
+    /** @var string[] Allowed certificate status values */
+    private static $allowedStatuses = ['active', 'revoked', 'expired'];
+
+    /** @var string[] Allowed sort columns for certificate listing */
+    private static $allowedSortCols = ['issue_date', 'course_name', 'status'];
+
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
 
     /**
      * Get student details by student row ID, joining users table.
+     *
+     * @param bool $includeInactive When true, returns the record even if is_active = FALSE (admin use).
      */
-    public function getStudentById(int $id): ?array {
+    public function getStudentById(int $id, bool $includeInactive = false): ?array {
+        $activeClause = $includeInactive ? '' : 'AND s.is_active = TRUE';
         $stmt = $this->db->prepare("
             SELECT s.id, s.user_id, s.student_id, s.university_id, s.is_active, s.enrollment_date, s.date_of_birth,
                    u.full_name, u.email
             FROM students s
             JOIN users u ON s.user_id = u.id
-            WHERE s.id = ?
+            WHERE s.id = ? $activeClause
         ");
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -29,31 +38,38 @@ class StudentService {
 
     /**
      * Update allowed student fields: full_name (users table) and date_of_birth (students table).
-     * Returns false when there is nothing to update.
+     * Returns false when student is not found OR nothing was actually updated.
      */
     public function updateStudent(int $studentId, array $data): bool {
-        $student = $this->getStudentById($studentId);
+        $student = $this->getStudentById($studentId, true);
         if (!$student) {
             return false;
         }
 
-        // Update users.full_name if provided
+        $updated = false;
+
+        // Update users.full_name if provided and non-empty
         if (isset($data['full_name']) && trim($data['full_name']) !== '') {
             $stmt = $this->db->prepare("
                 UPDATE users
                 SET full_name = ?
-                WHERE id = (SELECT user_id FROM students WHERE id = ?)
+                WHERE id = ?
             ");
-            $stmt->execute([trim($data['full_name']), $studentId]);
+            $stmt->execute([trim($data['full_name']), $student['user_id']]);
+            $updated = true;
         }
 
-        // Update students.date_of_birth if provided
+        // Update students.date_of_birth if provided with a valid Y-m-d date
         if (isset($data['date_of_birth']) && trim($data['date_of_birth']) !== '') {
+            if (!self::isValidDate($data['date_of_birth'])) {
+                return false;
+            }
             $stmt = $this->db->prepare("UPDATE students SET date_of_birth = ? WHERE id = ?");
             $stmt->execute([trim($data['date_of_birth']), $studentId]);
+            $updated = true;
         }
 
-        return true;
+        return $updated;
     }
 
     /**
@@ -68,6 +84,7 @@ class StudentService {
      * Get certificates belonging to a student with pagination and optional filtering.
      *
      * Supported filters: status, course_name, issue_date_from, issue_date_to
+     * Optional sort: sort (column), order (asc|desc)
      */
     public function getStudentCertificates(int $studentId, array $filters, int $page, int $limit): array {
         $page   = max(1, $page);
@@ -78,26 +95,38 @@ class StudentService {
         $params     = [$studentId];
 
         if (!empty($filters['status'])) {
-            $conditions[] = 'c.status = ?';
-            $params[]     = $filters['status'];
+            if (in_array($filters['status'], self::$allowedStatuses, true)) {
+                $conditions[] = 'c.status = ?';
+                $params[]     = $filters['status'];
+            }
         }
 
         if (!empty($filters['course_name'])) {
+            $courseName   = substr($filters['course_name'], 0, 100);
             $conditions[] = 'c.course_name LIKE ?';
-            $params[]     = '%' . $filters['course_name'] . '%';
+            $params[]     = '%' . $courseName . '%';
         }
 
         if (!empty($filters['issue_date_from'])) {
-            $conditions[] = 'c.issue_date >= ?';
-            $params[]     = $filters['issue_date_from'];
+            if (self::isValidDate($filters['issue_date_from'])) {
+                $conditions[] = 'c.issue_date >= ?';
+                $params[]     = $filters['issue_date_from'];
+            }
         }
 
         if (!empty($filters['issue_date_to'])) {
-            $conditions[] = 'c.issue_date <= ?';
-            $params[]     = $filters['issue_date_to'];
+            if (self::isValidDate($filters['issue_date_to'])) {
+                $conditions[] = 'c.issue_date <= ?';
+                $params[]     = $filters['issue_date_to'];
+            }
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
+
+        $sortCol = (isset($filters['sort']) && in_array($filters['sort'], self::$allowedSortCols, true))
+            ? $filters['sort']
+            : 'issue_date';
+        $sortDir = (isset($filters['order']) && strtolower($filters['order']) === 'asc') ? 'ASC' : 'DESC';
 
         // Total count
         $countStmt = $this->db->prepare("
@@ -115,15 +144,15 @@ class StudentService {
             FROM certificates c
             JOIN universities un ON c.university_id = un.id
             $where
-            ORDER BY c.issue_date DESC
+            ORDER BY c.$sortCol $sortDir
             LIMIT ? OFFSET ?
         ");
         $dataStmt->execute($params);
         $certificates = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            'certificates' => $certificates,
-            'pagination'   => [
+            'data'       => $certificates,
+            'pagination' => [
                 'page'  => $page,
                 'limit' => $limit,
                 'total' => $total,
@@ -154,7 +183,8 @@ class StudentService {
             return true;
         }
 
-        $student = $this->getStudentById($studentId);
+        // Use includeInactive = true so authorization works regardless of active status
+        $student = $this->getStudentById($studentId, true);
         if (!$student) {
             return false;
         }
@@ -176,5 +206,13 @@ class StudentService {
             default:
                 return false;
         }
+    }
+
+    /**
+     * Validate a date string matches Y-m-d format and is a real calendar date.
+     */
+    public static function isValidDate(string $date): bool {
+        $d = \DateTime::createFromFormat('Y-m-d', $date);
+        return $d !== false && $d->format('Y-m-d') === $date;
     }
 }

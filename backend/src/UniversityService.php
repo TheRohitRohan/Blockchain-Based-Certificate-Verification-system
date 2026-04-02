@@ -7,18 +7,30 @@ use PDO;
 class UniversityService {
     private $db;
 
+    /** @var string[] Allowed certificate status values */
+    private static $allowedStatuses = ['active', 'revoked', 'expired'];
+
+    /** @var string[] Allowed sort columns for student listing */
+    private static $allowedStudentSortCols = ['enrollment_date', 'full_name'];
+
+    /** @var string[] Allowed sort columns for certificate listing */
+    private static $allowedCertSortCols = ['issue_date', 'course_name', 'status'];
+
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
 
     /**
      * Get university details by ID.
+     *
+     * @param bool $includeInactive When true, returns the record even if is_active = FALSE (admin use).
      */
-    public function getUniversity(int $id): ?array {
+    public function getUniversity(int $id, bool $includeInactive = false): ?array {
+        $activeClause = $includeInactive ? '' : 'AND is_active = TRUE';
         $stmt = $this->db->prepare("
             SELECT id, name, code, address, contact_email, contact_phone, is_active
             FROM universities
-            WHERE id = ?
+            WHERE id = ? $activeClause
         ");
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -62,6 +74,7 @@ class UniversityService {
      * List students of a university with pagination and optional filtering.
      *
      * Supported filters: is_active, enrollment_date_from, enrollment_date_to
+     * Optional sort: sort (column), order (asc|desc)
      */
     public function getUniversityStudents(int $universityId, array $filters, int $page, int $limit): array {
         $page   = max(1, $page);
@@ -84,16 +97,25 @@ class UniversityService {
         }
 
         if (!empty($filters['enrollment_date_from'])) {
-            $conditions[] = 's.enrollment_date >= ?';
-            $params[]     = $filters['enrollment_date_from'];
+            if (self::isValidDate($filters['enrollment_date_from'])) {
+                $conditions[] = 's.enrollment_date >= ?';
+                $params[]     = $filters['enrollment_date_from'];
+            }
         }
 
         if (!empty($filters['enrollment_date_to'])) {
-            $conditions[] = 's.enrollment_date <= ?';
-            $params[]     = $filters['enrollment_date_to'];
+            if (self::isValidDate($filters['enrollment_date_to'])) {
+                $conditions[] = 's.enrollment_date <= ?';
+                $params[]     = $filters['enrollment_date_to'];
+            }
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
+
+        $sortCol = (isset($filters['sort']) && in_array($filters['sort'], self::$allowedStudentSortCols, true))
+            ? ($filters['sort'] === 'full_name' ? 'u.full_name' : 's.' . $filters['sort'])
+            : 's.enrollment_date';
+        $sortDir = (isset($filters['order']) && strtolower($filters['order']) === 'asc') ? 'ASC' : 'DESC';
 
         $countStmt = $this->db->prepare("
             SELECT COUNT(*) FROM students s $where
@@ -107,7 +129,7 @@ class UniversityService {
             FROM students s
             JOIN users u ON s.user_id = u.id
             $where
-            ORDER BY s.enrollment_date DESC
+            ORDER BY $sortCol $sortDir
             LIMIT ? OFFSET ?
         ");
         $params[] = $limit;
@@ -116,7 +138,7 @@ class UniversityService {
         $students = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            'students'   => $students,
+            'data'       => $students,
             'pagination' => [
                 'page'  => $page,
                 'limit' => $limit,
@@ -130,6 +152,7 @@ class UniversityService {
      * List certificates issued by a university with pagination and optional filtering.
      *
      * Supported filters: status, course_name, issue_date_from, issue_date_to
+     * Optional sort: sort (column), order (asc|desc)
      */
     public function getUniversityCertificates(int $universityId, array $filters, int $page, int $limit): array {
         $page   = max(1, $page);
@@ -140,26 +163,38 @@ class UniversityService {
         $params     = [$universityId];
 
         if (!empty($filters['status'])) {
-            $conditions[] = 'c.status = ?';
-            $params[]     = $filters['status'];
+            if (in_array($filters['status'], self::$allowedStatuses, true)) {
+                $conditions[] = 'c.status = ?';
+                $params[]     = $filters['status'];
+            }
         }
 
         if (!empty($filters['course_name'])) {
+            $courseName   = substr($filters['course_name'], 0, 100);
             $conditions[] = 'c.course_name LIKE ?';
-            $params[]     = '%' . $filters['course_name'] . '%';
+            $params[]     = '%' . $courseName . '%';
         }
 
         if (!empty($filters['issue_date_from'])) {
-            $conditions[] = 'c.issue_date >= ?';
-            $params[]     = $filters['issue_date_from'];
+            if (self::isValidDate($filters['issue_date_from'])) {
+                $conditions[] = 'c.issue_date >= ?';
+                $params[]     = $filters['issue_date_from'];
+            }
         }
 
         if (!empty($filters['issue_date_to'])) {
-            $conditions[] = 'c.issue_date <= ?';
-            $params[]     = $filters['issue_date_to'];
+            if (self::isValidDate($filters['issue_date_to'])) {
+                $conditions[] = 'c.issue_date <= ?';
+                $params[]     = $filters['issue_date_to'];
+            }
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
+
+        $sortCol = (isset($filters['sort']) && in_array($filters['sort'], self::$allowedCertSortCols, true))
+            ? $filters['sort']
+            : 'issue_date';
+        $sortDir = (isset($filters['order']) && strtolower($filters['order']) === 'asc') ? 'ASC' : 'DESC';
 
         $countStmt = $this->db->prepare("
             SELECT COUNT(*) FROM certificates c $where
@@ -174,7 +209,7 @@ class UniversityService {
             JOIN students s ON c.student_id = s.id
             JOIN users u ON s.user_id = u.id
             $where
-            ORDER BY c.issue_date DESC
+            ORDER BY c.$sortCol $sortDir
             LIMIT ? OFFSET ?
         ");
         $params[] = $limit;
@@ -183,8 +218,8 @@ class UniversityService {
         $certificates = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            'certificates' => $certificates,
-            'pagination'   => [
+            'data'       => $certificates,
+            'pagination' => [
                 'page'  => $page,
                 'limit' => $limit,
                 'total' => $total,
@@ -234,7 +269,7 @@ class UniversityService {
      *
      * Authorization matrix:
      *   view         – public (always true)
-     *   update       – admin only
+     *   update       – admin or that university
      *   delete       – admin only
      *   students     – admin, that university
      *   certificates – admin, that university
@@ -257,6 +292,8 @@ class UniversityService {
             case 'view':
                 return true;
             case 'update':
+                // Admin OR the university itself can update their own record
+                return $isSameUniversity;
             case 'delete':
                 return false; // admin-only
             case 'students':
@@ -266,5 +303,13 @@ class UniversityService {
             default:
                 return false;
         }
+    }
+
+    /**
+     * Validate a date string matches Y-m-d format and is a real calendar date.
+     */
+    public static function isValidDate(string $date): bool {
+        $d = \DateTime::createFromFormat('Y-m-d', $date);
+        return $d !== false && $d->format('Y-m-d') === $date;
     }
 }
