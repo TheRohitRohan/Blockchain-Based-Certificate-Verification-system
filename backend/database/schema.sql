@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin', 'university', 'student') NOT NULL,
     full_name VARCHAR(255),
+    avatar_path VARCHAR(500) NULL,
     university_id INT NULL,
     wallet_address VARCHAR(42) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -145,3 +146,16 @@ CREATE TABLE IF NOT EXISTS university_keys (
 -- Insert default admin user (password: admin123)
 INSERT INTO users (username, email, password_hash, role, full_name) VALUES
 ('admin', 'admin@certificate-system.com', '$2y$10$tCmOdwc0pZQ1HoHwnYh4MOXGE9HBPHmB/gd.luFzNkEahWdsWRQAa', 'admin', 'System Administrator');
+
+-- Password resets table
+CREATE TABLE IF NOT EXISTS password_resets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_token (token),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
