@@ -48,25 +48,37 @@ class StudentService {
 
         $updated = false;
 
-        // Update users.full_name if provided and non-empty
-        if (isset($data['full_name']) && trim($data['full_name']) !== '') {
-            $stmt = $this->db->prepare("
-                UPDATE users
-                SET full_name = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([trim($data['full_name']), $student['user_id']]);
-            $updated = true;
+        // Update users.full_name if provided, non-empty, and actually changed
+        if (isset($data['full_name'])) {
+            $newFullName = trim($data['full_name']);
+            if ($newFullName !== '' && $newFullName !== $student['full_name']) {
+                $stmt = $this->db->prepare("
+                    UPDATE users
+                    SET full_name = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$newFullName, $student['user_id']]);
+                if ($stmt->rowCount() > 0) {
+                    $updated = true;
+                }
+            }
         }
 
-        // Update students.date_of_birth if provided with a valid Y-m-d date
-        if (isset($data['date_of_birth']) && trim($data['date_of_birth']) !== '') {
-            if (!self::isValidDate($data['date_of_birth'])) {
-                return false;
+        // Update students.date_of_birth if provided with a valid Y-m-d date and actually changed
+        if (isset($data['date_of_birth'])) {
+            $newDob = trim($data['date_of_birth']);
+            if ($newDob !== '') {
+                if (!self::isValidDate($newDob)) {
+                    return false;
+                }
+                if ($newDob !== $student['date_of_birth']) {
+                    $stmt = $this->db->prepare("UPDATE students SET date_of_birth = ? WHERE id = ?");
+                    $stmt->execute([$newDob, $studentId]);
+                    if ($stmt->rowCount() > 0) {
+                        $updated = true;
+                    }
+                }
             }
-            $stmt = $this->db->prepare("UPDATE students SET date_of_birth = ? WHERE id = ?");
-            $stmt->execute([trim($data['date_of_birth']), $studentId]);
-            $updated = true;
         }
 
         return $updated;
@@ -196,7 +208,9 @@ class StudentService {
 
         switch ($requiredRole) {
             case 'view':
-                return $isSelf || $isSameUniversity;
+                // University-role callers can view students in their own university.
+                // Students may only view their own profile (self).
+                return $isSelf || ($callerRole === 'university' && $isSameUniversity);
             case 'update':
                 return $isSelf;
             case 'delete':

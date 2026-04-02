@@ -528,10 +528,25 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  students:
+                  data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Student'
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
         '401':
           description: Unauthorized
           content:
@@ -1241,8 +1256,30 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  student:
-                    $ref: '#/components/schemas/Student'
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      student_id:
+                        type: string
+                      university_id:
+                        type: integer
+                      is_active:
+                        type: boolean
+                      enrollment_date:
+                        type: string
+                        format: date
+                      date_of_birth:
+                        type: string
+                        format: date
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                        format: email
         '404':
           description: Student not found
           content:
@@ -1409,10 +1446,25 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  certificates:
+                  data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Certificate'
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        university_name:
+                          type: string
                   pagination:
                     type: object
                     properties:
@@ -1424,6 +1476,12 @@ paths:
                         type: integer
                       pages:
                         type: integer
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Forbidden
           content:
@@ -1454,8 +1512,24 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  university:
-                    $ref: '#/components/schemas/University'
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      code:
+                        type: string
+                      address:
+                        type: string
+                      contact_email:
+                        type: string
+                        format: email
+                      contact_phone:
+                        type: string
+                      is_active:
+                        type: boolean
         '404':
           description: University not found
           content:
@@ -1466,7 +1540,7 @@ paths:
       tags:
         - Universities
       summary: Update university info
-      description: Update allowed fields (name, address, contact_email, contact_phone). Admin only.
+      description: Update allowed fields (name, address, contact_email, contact_phone). Admin or the owning university.
       security:
         - BearerAuth: []
       parameters:
@@ -1690,10 +1764,25 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  certificates:
+                  data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Certificate'
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        student_name:
+                          type: string
                   pagination:
                     type: object
                     properties:
@@ -1705,6 +1794,12 @@ paths:
                         type: integer
                       pages:
                         type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Forbidden
           content:
@@ -1737,7 +1832,7 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  stats:
+                  data:
                     type: object
                     properties:
                       total_students:

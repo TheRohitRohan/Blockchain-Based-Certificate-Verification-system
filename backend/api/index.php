@@ -151,6 +151,13 @@ if ($method === 'GET' && preg_match('#^/students/(\d+)$#', $path, $m)) {
 if ($method === 'PUT' && preg_match('#^/students/(\d+)$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'student']);
     $studentId = (int)$m[1];
+    // Check existence first so callers get 404, not 403, for unknown IDs
+    $student = $studentService->getStudentById($studentId, $user['role'] === 'admin');
+    if (!$student) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Student not found']);
+        exit;
+    }
     if (!$studentService->checkStudentAuthorization(
         $user['user_id'], $studentId, 'update', $user['role'], $user['university_id'] ?? null
     )) {
@@ -174,12 +181,6 @@ if ($method === 'PUT' && preg_match('#^/students/(\d+)$#', $path, $m)) {
     }
     $result = $studentService->updateStudent($studentId, $data);
     if ($result === false) {
-        $exists = $studentService->getStudentById($studentId, true);
-        if (!$exists) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Student not found']);
-            exit;
-        }
         http_response_code(400);
         echo json_encode(['error' => 'No valid fields to update']);
         exit;
@@ -207,6 +208,14 @@ if ($method === 'DELETE' && preg_match('#^/students/(\d+)$#', $path, $m)) {
 if ($method === 'GET' && preg_match('#^/students/(\d+)/certificates$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university', 'student']);
     $studentId = (int)$m[1];
+    // Check existence first; non-admins only see active students
+    $includeInactive = ($user['role'] === 'admin');
+    $student = $studentService->getStudentById($studentId, $includeInactive);
+    if (!$student) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Student not found']);
+        exit;
+    }
     if (!$studentService->checkStudentAuthorization(
         $user['user_id'], $studentId, 'certificates', $user['role'], $user['university_id'] ?? null
     )) {
@@ -247,8 +256,7 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
 if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
-    if (!$universityService->checkUniversityAuthorization(
-        $user['user_id'], $universityId, 'update', $user['role'], $user['university_id'] ?? null
+    if (!$universityService->checkUniversityAuthorization($universityId, 'update', $user['role'], $user['university_id'] ?? null
     )) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
@@ -290,20 +298,31 @@ if ($method === 'DELETE' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
 if ($method === 'GET' && preg_match('#^/universities/(\d+)/students$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
-    if (!$universityService->checkUniversityAuthorization(
-        $user['user_id'], $universityId, 'students', $user['role'], $user['university_id'] ?? null
+    // Admins may access deactivated universities; others cannot
+    $university = $universityService->getUniversity($universityId, $user['role'] === 'admin');
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    if (!$universityService->checkUniversityAuthorization($universityId, 'students', $user['role'], $user['university_id'] ?? null
     )) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
         exit;
     }
     $filters = [
-        'is_active'            => $_GET['is_active']            ?? '',
         'enrollment_date_from' => $_GET['enrollment_date_from'] ?? '',
         'enrollment_date_to'   => $_GET['enrollment_date_to']   ?? '',
         'sort'                 => $_GET['sort']                 ?? '',
         'order'                => $_GET['order']                ?? '',
     ];
+    // Only admins may request inactive students; others always see active-only
+    if ($user['role'] === 'admin') {
+        $filters['is_active'] = $_GET['is_active'] ?? '';
+    } else {
+        $filters['is_active'] = 'true';
+    }
     $page  = max(1, (int)($_GET['page']  ?? 1));
     $limit = min(100, (int)($_GET['limit'] ?? 10));
     $result = $universityService->getUniversityStudents($universityId, $filters, $page, $limit);
@@ -315,8 +334,14 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/students$#', $path, $
 if ($method === 'GET' && preg_match('#^/universities/(\d+)/certificates$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
-    if (!$universityService->checkUniversityAuthorization(
-        $user['user_id'], $universityId, 'certificates', $user['role'], $user['university_id'] ?? null
+    // Admins may access deactivated universities; others cannot
+    $university = $universityService->getUniversity($universityId, $user['role'] === 'admin');
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    if (!$universityService->checkUniversityAuthorization($universityId, 'certificates', $user['role'], $user['university_id'] ?? null
     )) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
@@ -341,17 +366,16 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/certificates$#', $pat
 if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
-    if (!$universityService->checkUniversityAuthorization(
-        $user['user_id'], $universityId, 'stats', $user['role'], $user['university_id'] ?? null
-    )) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Forbidden']);
-        exit;
-    }
-    $university = $universityService->getUniversity($universityId, true);
+    $university = $universityService->getUniversity($universityId, $user['role'] === 'admin');
     if (!$university) {
         http_response_code(404);
         echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    if (!$universityService->checkUniversityAuthorization($universityId, 'stats', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
         exit;
     }
     $stats = $universityService->getUniversityStats($universityId);

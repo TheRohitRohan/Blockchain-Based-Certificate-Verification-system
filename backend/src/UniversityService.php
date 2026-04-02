@@ -59,7 +59,10 @@ class UniversityService {
 
         $params[] = $id;
         $stmt     = $this->db->prepare("UPDATE universities SET " . implode(', ', $sets) . " WHERE id = ?");
-        return $stmt->execute($params);
+        if (!$stmt->execute($params)) {
+            return false;
+        }
+        return $stmt->rowCount() > 0;
     }
 
     /**
@@ -263,9 +266,9 @@ class UniversityService {
     }
 
     /**
-     * Check whether $userId is authorised for the given action on university $universityId.
+     * Check whether $callerRole/$callerUniversityId is authorised for the given action on university $universityId.
      *
-     * $requiredRole: 'update' | 'delete' | 'students' | 'certificates' | 'stats'
+     * $requiredRole: 'view' | 'update' | 'delete' | 'students' | 'certificates' | 'stats'
      *
      * Authorization matrix:
      *   view         – public (always true)
@@ -276,7 +279,6 @@ class UniversityService {
      *   stats        – admin, that university
      */
     public function checkUniversityAuthorization(
-        int    $userId,
         int    $universityId,
         string $requiredRole,
         string $callerRole,
