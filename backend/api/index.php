@@ -76,6 +76,8 @@ use App\CertificateService;
 use App\Database;
 use App\PublicVerificationService;
 use App\SignatureService;
+use App\StudentService;
+use App\UniversityService;
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = $_SERVER['REQUEST_URI'] ?? '/';
@@ -85,6 +87,8 @@ $path = str_replace('/api', '', $path);
 $auth = new Auth();
 $certService = new CertificateService();
 $signatureService = new SignatureService();
+$studentService = new StudentService();
+$universityService = new UniversityService();
 
 // Extract token from Authorization header
 $headers = getallheaders();
@@ -117,6 +121,215 @@ function requireAuth($token, $auth, $allowedRoles = []) {
 }
 
 // Route handling
+
+// ─── Dynamic-path routes (must be checked before the switch) ─────────────────
+
+// GET /students/:id
+if ($method === 'GET' && preg_match('#^/students/(\d+)$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'university', 'student']);
+    $studentId = (int)$m[1];
+    $student = $studentService->getStudentById($studentId);
+    if (!$student) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Student not found']);
+        exit;
+    }
+    if (!$studentService->checkStudentAuthorization(
+        $user['user_id'], $studentId, 'view', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'student' => $student]);
+    exit;
+}
+
+// PUT /students/:id
+if ($method === 'PUT' && preg_match('#^/students/(\d+)$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'student']);
+    $studentId = (int)$m[1];
+    if (!$studentService->checkStudentAuthorization(
+        $user['user_id'], $studentId, 'update', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
+    if (!isset($data['full_name']) && !isset($data['date_of_birth'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No updatable fields provided']);
+        exit;
+    }
+    $result = $studentService->updateStudent($studentId, $data);
+    if (!$result) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Student not found']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'message' => 'Student updated successfully']);
+    exit;
+}
+
+// DELETE /students/:id
+if ($method === 'DELETE' && preg_match('#^/students/(\d+)$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin']);
+    $studentId = (int)$m[1];
+    $student = $studentService->getStudentById($studentId);
+    if (!$student) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Student not found']);
+        exit;
+    }
+    $studentService->softDeleteStudent($studentId);
+    echo json_encode(['success' => true, 'message' => 'Student deactivated successfully']);
+    exit;
+}
+
+// GET /students/:id/certificates
+if ($method === 'GET' && preg_match('#^/students/(\d+)/certificates$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'university', 'student']);
+    $studentId = (int)$m[1];
+    if (!$studentService->checkStudentAuthorization(
+        $user['user_id'], $studentId, 'certificates', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    $filters = [
+        'status'          => $_GET['status']          ?? '',
+        'course_name'     => $_GET['course_name']     ?? '',
+        'issue_date_from' => $_GET['issue_date_from'] ?? '',
+        'issue_date_to'   => $_GET['issue_date_to']   ?? '',
+    ];
+    $page  = max(1, (int)($_GET['page']  ?? 1));
+    $limit = min(100, (int)($_GET['limit'] ?? 10));
+    $result = $studentService->getStudentCertificates($studentId, $filters, $page, $limit);
+    echo json_encode(['success' => true] + $result);
+    exit;
+}
+
+// GET /universities/:id
+if ($method === 'GET' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
+    $universityId = (int)$m[1];
+    $university = $universityService->getUniversity($universityId);
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'university' => $university]);
+    exit;
+}
+
+// PUT /universities/:id
+if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin']);
+    $universityId = (int)$m[1];
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
+    $result = $universityService->updateUniversity($universityId, $data);
+    if ($result === false) {
+        $university = $universityService->getUniversity($universityId);
+        if (!$university) {
+            http_response_code(404);
+            echo json_encode(['error' => 'University not found']);
+            exit;
+        }
+        http_response_code(400);
+        echo json_encode(['error' => 'No updatable fields provided']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'message' => 'University updated successfully']);
+    exit;
+}
+
+// DELETE /universities/:id
+if ($method === 'DELETE' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin']);
+    $universityId = (int)$m[1];
+    $university = $universityService->getUniversity($universityId);
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    $universityService->deactivateUniversity($universityId);
+    echo json_encode(['success' => true, 'message' => 'University deactivated successfully']);
+    exit;
+}
+
+// GET /universities/:id/students
+if ($method === 'GET' && preg_match('#^/universities/(\d+)/students$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'university']);
+    $universityId = (int)$m[1];
+    if (!$universityService->checkUniversityAuthorization(
+        $user['user_id'], $universityId, 'students', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    $filters = [
+        'is_active'            => $_GET['is_active']            ?? '',
+        'enrollment_date_from' => $_GET['enrollment_date_from'] ?? '',
+        'enrollment_date_to'   => $_GET['enrollment_date_to']   ?? '',
+    ];
+    $page  = max(1, (int)($_GET['page']  ?? 1));
+    $limit = min(100, (int)($_GET['limit'] ?? 10));
+    $result = $universityService->getUniversityStudents($universityId, $filters, $page, $limit);
+    echo json_encode(['success' => true] + $result);
+    exit;
+}
+
+// GET /universities/:id/certificates
+if ($method === 'GET' && preg_match('#^/universities/(\d+)/certificates$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'university']);
+    $universityId = (int)$m[1];
+    if (!$universityService->checkUniversityAuthorization(
+        $user['user_id'], $universityId, 'certificates', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    $filters = [
+        'status'          => $_GET['status']          ?? '',
+        'course_name'     => $_GET['course_name']     ?? '',
+        'issue_date_from' => $_GET['issue_date_from'] ?? '',
+        'issue_date_to'   => $_GET['issue_date_to']   ?? '',
+    ];
+    $page  = max(1, (int)($_GET['page']  ?? 1));
+    $limit = min(100, (int)($_GET['limit'] ?? 10));
+    $result = $universityService->getUniversityCertificates($universityId, $filters, $page, $limit);
+    echo json_encode(['success' => true] + $result);
+    exit;
+}
+
+// GET /universities/:id/stats
+if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m)) {
+    $user = requireAuth($token, $auth, ['admin', 'university']);
+    $universityId = (int)$m[1];
+    if (!$universityService->checkUniversityAuthorization(
+        $user['user_id'], $universityId, 'stats', $user['role'], $user['university_id'] ?? null
+    )) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+    $university = $universityService->getUniversity($universityId);
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
+    $stats = $universityService->getUniversityStats($universityId);
+    echo json_encode(['success' => true, 'stats' => $stats]);
+    exit;
+}
+
+// ─── Static routes via switch ─────────────────────────────────────────────────
 switch ($path) {
     case '/auth/login':
         if ($method === 'POST') {
