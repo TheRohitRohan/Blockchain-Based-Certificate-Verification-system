@@ -58,9 +58,7 @@ class StudentService {
                     WHERE id = ?
                 ");
                 $stmt->execute([$newFullName, $student['user_id']]);
-                if ($stmt->rowCount() > 0) {
-                    $updated = true;
-                }
+                $updated = true;
             }
         }
 
@@ -74,9 +72,7 @@ class StudentService {
                 if ($newDob !== $student['date_of_birth']) {
                     $stmt = $this->db->prepare("UPDATE students SET date_of_birth = ? WHERE id = ?");
                     $stmt->execute([$newDob, $studentId]);
-                    if ($stmt->rowCount() > 0) {
-                        $updated = true;
-                    }
+                    $updated = true;
                 }
             }
         }

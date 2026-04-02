@@ -40,8 +40,14 @@ class UniversityService {
     /**
      * Update allowed university fields: name, address, contact_email, contact_phone.
      * Fields 'code' and 'wallet_address' are intentionally excluded.
+     * Returns false if the university does not exist or no updatable fields were provided.
      */
     public function updateUniversity(int $id, array $data): bool {
+        // Verify the university exists first
+        if (!$this->getUniversity($id, true)) {
+            return false;
+        }
+
         $allowed = ['name', 'address', 'contact_email', 'contact_phone'];
         $sets    = [];
         $params  = [];
@@ -59,10 +65,7 @@ class UniversityService {
 
         $params[] = $id;
         $stmt     = $this->db->prepare("UPDATE universities SET " . implode(', ', $sets) . " WHERE id = ?");
-        if (!$stmt->execute($params)) {
-            return false;
-        }
-        return $stmt->rowCount() > 0;
+        return $stmt->execute($params);
     }
 
     /**

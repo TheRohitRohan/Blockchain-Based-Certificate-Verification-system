@@ -256,8 +256,7 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
 if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
-    if (!$universityService->checkUniversityAuthorization($universityId, 'update', $user['role'], $user['university_id'] ?? null
-    )) {
+    if (!$universityService->checkUniversityAuthorization($universityId, 'update', $user['role'], $user['university_id'] ?? null)) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
         exit;
@@ -305,8 +304,7 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/students$#', $path, $
         echo json_encode(['error' => 'University not found']);
         exit;
     }
-    if (!$universityService->checkUniversityAuthorization($universityId, 'students', $user['role'], $user['university_id'] ?? null
-    )) {
+    if (!$universityService->checkUniversityAuthorization($universityId, 'students', $user['role'], $user['university_id'] ?? null)) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
         exit;
@@ -341,8 +339,7 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/certificates$#', $pat
         echo json_encode(['error' => 'University not found']);
         exit;
     }
-    if (!$universityService->checkUniversityAuthorization($universityId, 'certificates', $user['role'], $user['university_id'] ?? null
-    )) {
+    if (!$universityService->checkUniversityAuthorization($universityId, 'certificates', $user['role'], $user['university_id'] ?? null)) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
         exit;
@@ -372,8 +369,7 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m))
         echo json_encode(['error' => 'University not found']);
         exit;
     }
-    if (!$universityService->checkUniversityAuthorization($universityId, 'stats', $user['role'], $user['university_id'] ?? null
-    )) {
+    if (!$universityService->checkUniversityAuthorization($universityId, 'stats', $user['role'], $user['university_id'] ?? null)) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
         exit;
