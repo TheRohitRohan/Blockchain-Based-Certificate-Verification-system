@@ -119,8 +119,8 @@ function requireAuth($token, $auth, $allowedRoles = []) {
 }
 
 function validatePasswordStrength(string $password): ?string {
-    if (strlen($password) < 8) {
-        return 'Password must be at least 8 characters';
+    if (!preg_match('/^(?=.*[A-Za-z])(?=.*\d).{8,}$/', $password)) {
+        return 'Password must be at least 8 characters and contain both letters and numbers';
     }
     return null;
 }
@@ -687,7 +687,9 @@ switch ($path) {
             // Always respond with success to prevent user enumeration
             if ($resetData) {
                 $emailService = new EmailService();
-                $emailService->sendPasswordResetEmail($resetData['email'], $resetData['token'], $resetData['expires_at']);
+                if (!$emailService->sendPasswordResetEmail($resetData['email'], $resetData['token'], $resetData['expires_at'])) {
+                    error_log("Failed to send password reset email to " . $resetData['email']);
+                }
             }
 
             echo json_encode(['success' => true, 'message' => 'If an account with that email exists, a password reset link has been sent']);

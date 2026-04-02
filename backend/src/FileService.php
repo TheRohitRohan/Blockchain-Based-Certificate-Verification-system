@@ -59,10 +59,14 @@ class FileService {
         $mimeType = $finfo->file($file['tmp_name']);
         $ext = self::ALLOWED_MIME_TYPES[$mimeType];
 
+        if (!is_uploaded_file($file['tmp_name'])) {
+            return ['success' => false, 'path' => null, 'error' => 'Invalid upload source'];
+        }
+
         // Delete old avatar if it exists
         $this->deleteOldAvatar($userId);
 
-        $filename = $userId . '.' . $ext;
+        $filename = $userId . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
         $destPath = $this->avatarDir . '/' . $filename;
 
         if (!move_uploaded_file($file['tmp_name'], $destPath)) {
@@ -81,8 +85,7 @@ class FileService {
      */
     public function deleteOldAvatar(int $userId): void {
         foreach (array_values(self::ALLOWED_MIME_TYPES) as $ext) {
-            $path = $this->avatarDir . '/' . $userId . '.' . $ext;
-            if (file_exists($path)) {
+            foreach (glob($this->avatarDir . '/' . $userId . '_*.' . $ext) ?: [] as $path) {
                 unlink($path);
             }
         }
