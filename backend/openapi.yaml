@@ -1685,10 +1685,25 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  students:
+                  data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Student'
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
                   pagination:
                     type: object
                     properties:
@@ -1700,6 +1715,12 @@ paths:
                         type: integer
                       pages:
                         type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Forbidden
           content:
