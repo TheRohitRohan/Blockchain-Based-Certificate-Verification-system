@@ -2,7 +2,45 @@
 
 namespace App;
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
+
 class EmailService {
+
+    private array $mailConfig;
+
+    public function __construct() {
+        $config = require __DIR__ . '/../config.php';
+        $this->mailConfig = $config['mail'];
+    }
+
+    /**
+     * Create and configure a PHPMailer instance with Gmail SMTP settings.
+     */
+    private function createMailer(): PHPMailer {
+        $mail = new PHPMailer(true); // enable exceptions
+
+        $mail->isSMTP();
+        $mail->Host       = $this->mailConfig['host'];
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $this->mailConfig['username'];
+        $mail->Password   = $this->mailConfig['password'];
+        $mail->SMTPSecure = $this->mailConfig['encryption'] === 'tls'
+                            ? PHPMailer::ENCRYPTION_STARTTLS
+                            : PHPMailer::ENCRYPTION_SMTPS;
+        $mail->Port       = $this->mailConfig['port'];
+
+        $mail->setFrom(
+            $this->mailConfig['from_address'],
+            $this->mailConfig['from_name']
+        );
+
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+
+        return $mail;
+    }
 
     /**
      * Send a password reset email to the user.
@@ -20,16 +58,44 @@ class EmailService {
         $resetUrl = ($frontendUrl ?: $appBaseUrl) . '/reset-password?token=' . urlencode($resetToken);
         $expiryFormatted = date('Y-m-d H:i:s', $expiryTime) . ' UTC';
 
-        $subject = 'Password Reset Request';
-        $body = $this->buildResetEmailBody($resetUrl, $expiryFormatted);
+        try {
+            $mail = $this->createMailer();
+            $mail->addAddress($email);
+            $mail->Subject = 'Password Reset Request';
+            $mail->Body    = $this->buildResetEmailBody($resetUrl, $expiryFormatted);
+            $mail->AltBody = "You requested a password reset. Visit: {$resetUrl} — This link expires at {$expiryFormatted}.";
 
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: no-reply@certificate-system.com\r\n";
-        $headers .= "Reply-To: no-reply@certificate-system.com\r\n";
-        $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+            $mail->send();
+            return true;
+        } catch (Exception $e) {
+            error_log("PHPMailer Error (password reset to {$email}): " . $e->getMessage());
+            return false;
+        }
+    }
 
-        return mail($email, $subject, $body, $headers);
+    /**
+     * Send a generic notification email.
+     *
+     * @param string $to      Recipient email
+     * @param string $subject Email subject
+     * @param string $body    HTML body
+     * @param string $altBody Plain-text fallback (optional)
+     * @return bool
+     */
+    public function sendEmail(string $to, string $subject, string $body, string $altBody = ''): bool {
+        try {
+            $mail = $this->createMailer();
+            $mail->addAddress($to);
+            $mail->Subject = $subject;
+            $mail->Body    = $body;
+            $mail->AltBody = $altBody ?: strip_tags($body);
+
+            $mail->send();
+            return true;
+        } catch (Exception $e) {
+            error_log("PHPMailer Error (to {$to}): " . $e->getMessage());
+            return false;
+        }
     }
 
     private function buildResetEmailBody(string $resetUrl, string $expiryFormatted): string {
@@ -38,7 +104,7 @@ class EmailService {
 <html>
 <head><meta charset="UTF-8"><title>Password Reset</title></head>
 <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">
-  <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:8px;padding:32px;">
+  <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:8px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
     <h2 style="color:#333;">Password Reset Request</h2>
     <p>You requested a password reset for your account. Click the button below to set a new password.</p>
     <p style="text-align:center;">
