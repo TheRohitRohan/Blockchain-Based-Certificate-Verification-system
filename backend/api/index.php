@@ -1009,6 +1009,11 @@ switch ($path) {
             }
 
             $fileService = new FileService();
+
+            // Capture old avatar URL before uploading the new one, so we can clean up afterwards
+            $existingProfile = $auth->getUserById($user['user_id']);
+            $oldAvatarUrl    = $existingProfile['avatar_url'] ?? null;
+
             $result = $fileService->uploadAvatar($user['user_id'], $_FILES['avatar']);
 
             if (!$result['success']) {
@@ -1017,7 +1022,7 @@ switch ($path) {
                 break;
             }
 
-            // If DB update fails, delete the uploaded file from Supabase to avoid orphans
+            // If DB update fails, delete the newly uploaded file from Supabase to avoid orphans
             if (!$auth->updateAvatar($user['user_id'], $result['path'])) {
                 if (!empty($result['supabase_filename'])) {
                     $fileService->deleteAvatarFile($result['supabase_filename']);
@@ -1025,6 +1030,12 @@ switch ($path) {
                 http_response_code(500);
                 echo json_encode(['success' => false, 'error' => 'Failed to update profile']);
                 break;
+            }
+
+            // DB update succeeded — delete the previous avatar from Supabase to avoid orphans
+            if (!empty($oldAvatarUrl)) {
+                $supabaseStorage = new SupabaseStorage();
+                $supabaseStorage->deleteFileByUrl($oldAvatarUrl);
             }
 
             $profile = $auth->getUserById($user['user_id']);

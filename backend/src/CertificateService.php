@@ -366,7 +366,7 @@ class CertificateService {
                 $fullMetadata['issue_date']  ?? date('Y-m-d'),
                 $onchainHash,
                 $blockchainResult['tx_hash'] ?? null,
-                $supabaseFilename,
+                null,                   // pdf_path: no local file; PDF is stored in Supabase only
                 $fileUrl,               // Public URL from Supabase
                 $qrCodeFileName,        // Now populated for uploaded certificates
                 $metadataHash,
@@ -499,6 +499,8 @@ class CertificateService {
             // Upload regenerated PDF to Supabase Storage ("upload" bucket)
             $supabaseFilename = null;
             $fileUrl = null;
+            // Capture the previous Supabase file URL so we can delete it after the commit
+            $previousFileUrl = $existing['file_url'] ?? null;
             try {
                 $supabaseFilename = "cert_{$certificateId}_updated_" . time() . '_' . bin2hex(random_bytes(4)) . ".pdf";
                 $fileUrl = $this->supabaseStorage->uploadFile('upload', $pdfPath, $supabaseFilename, 'application/pdf');
@@ -531,6 +533,11 @@ class CertificateService {
             $stmt->execute($params);
 
             $this->db->commit();
+
+            // Delete the previous Supabase file now that the DB record points to the new one
+            if (!empty($previousFileUrl)) {
+                $this->supabaseStorage->deleteFileByUrl($previousFileUrl);
+            }
 
             // Invalidate cache
             $cache = Cache::getInstance();
@@ -575,12 +582,17 @@ class CertificateService {
 
             $this->db->commit();
 
-            // Delete PDF file
+            // Delete local PDF file if it exists
             if (!empty($existing['pdf_path'])) {
                 $pdfFull = $this->getConfig()['storage']['pdf_path'] . $existing['pdf_path'];
                 if (file_exists($pdfFull)) {
                     @unlink($pdfFull);
                 }
+            }
+
+            // Delete Supabase file if one was stored
+            if (!empty($existing['file_url'])) {
+                $this->supabaseStorage->deleteFileByUrl($existing['file_url']);
             }
 
             // Invalidate cache
@@ -672,6 +684,7 @@ class CertificateService {
                 c.certificate_hash,
                 c.blockchain_tx_hash,
                 c.pdf_path,
+                c.file_url,
                 c.qr_code_path,
                 c.status,
                 c.revoked_at,

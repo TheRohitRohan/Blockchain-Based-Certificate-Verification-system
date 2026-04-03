@@ -38,7 +38,8 @@ class SupabaseStorage {
     }
 
     /**
-     * Upload a file to Supabase Storage via REST API.
+     * Upload a file to Supabase Storage via REST API using streaming to avoid
+     * loading the entire file into memory.
      *
      * @param string $bucket      Bucket name (e.g. "upload")
      * @param string $fileTmpPath Path to the source file (temp or local)
@@ -52,32 +53,43 @@ class SupabaseStorage {
             throw new \Exception("File not found or not readable: {$fileTmpPath}");
         }
 
-        $fileContent = file_get_contents($fileTmpPath);
-        if ($fileContent === false) {
-            throw new \Exception("Failed to read file: {$fileTmpPath}");
+        $fileSize = filesize($fileTmpPath);
+        if ($fileSize === false) {
+            throw new \Exception("Failed to determine file size: {$fileTmpPath}");
+        }
+
+        $fileHandle = fopen($fileTmpPath, 'rb');
+        if ($fileHandle === false) {
+            throw new \Exception("Failed to open file for reading: {$fileTmpPath}");
         }
 
         $endpoint = "{$this->supabaseUrl}/storage/v1/object/{$bucket}/{$fileName}";
 
         $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $endpoint,
-            CURLOPT_CUSTOMREQUEST  => 'POST',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_POSTFIELDS     => $fileContent,
-            CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $this->serviceKey,
-                'Content-Type: ' . $contentType,
-                'Content-Length: ' . strlen($fileContent),
-            ],
-        ]);
+        try {
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $endpoint,
+                CURLOPT_CUSTOMREQUEST  => 'POST',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_UPLOAD         => true,
+                CURLOPT_INFILE         => $fileHandle,
+                CURLOPT_INFILESIZE     => $fileSize,
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $this->serviceKey,
+                    'Content-Type: ' . $contentType,
+                    'Content-Length: ' . $fileSize,
+                ],
+            ]);
 
-        $response  = curl_exec($ch);
-        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
+            $response  = curl_exec($ch);
+            $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+        } finally {
+            fclose($fileHandle);
+            curl_close($ch);
+        }
 
         if ($curlError) {
             throw new \Exception("CURL error during upload: {$curlError}");
@@ -141,5 +153,20 @@ class SupabaseStorage {
             error_log("SupabaseStorage::deleteFile failed: " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Delete a file from Supabase Storage by its public URL.
+     * Extracts the filename from the URL path (last segment after /upload/).
+     *
+     * @param string $fileUrl Public URL of the file
+     * @return bool
+     */
+    public function deleteFileByUrl(string $fileUrl): bool {
+        if (preg_match('#/upload/(.+)$#', $fileUrl, $matches)) {
+            return $this->deleteFile('upload', $matches[1]);
+        }
+        error_log("SupabaseStorage::deleteFileByUrl: cannot parse filename from URL: {$fileUrl}");
+        return false;
     }
 }

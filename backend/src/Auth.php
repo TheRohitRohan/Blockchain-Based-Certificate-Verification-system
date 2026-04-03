@@ -44,7 +44,7 @@ class Auth {
     }
 
     public function getUserById($id) {
-        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, avatar_url, university_id FROM users WHERE id = ?");
+        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, avatar_url, avatar_url AS avatar_path, university_id FROM users WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
