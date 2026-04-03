@@ -74,6 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 use App\Auth;
 use App\CertificateService;
 use App\Database;
+use App\EmailService;
+use App\FileService;
 use App\PublicVerificationService;
 use App\SignatureService;
 
@@ -114,6 +116,13 @@ function requireAuth($token, $auth, $allowedRoles = []) {
     }
 
     return $payload;
+}
+
+function validatePasswordStrength(string $password): ?string {
+    if (!preg_match('/^(?=.*[A-Za-z])(?=.*\d).{8,}$/', $password)) {
+        return 'Password must be at least 8 characters and contain both letters and numbers';
+    }
+    return null;
 }
 
 // Route handling
@@ -608,9 +617,149 @@ switch ($path) {
         }
         break;
 
+    case '/auth/profile':
+        if ($method === 'GET') {
+            $user = requireAuth($token, $auth);
+            $profile = $auth->getUserById($user['user_id']);
+            if (!$profile) {
+                http_response_code(404);
+                echo json_encode(['error' => 'User not found']);
+                break;
+            }
+            echo json_encode(['success' => true, 'data' => $profile]);
+        } elseif ($method === 'PUT') {
+            $user = requireAuth($token, $auth);
+            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            $result = $auth->updateProfile($user['user_id'], $data);
+            if ($result) {
+                $profile = $auth->getUserById($user['user_id']);
+                echo json_encode(['success' => true, 'message' => 'Profile updated successfully', 'data' => $profile]);
+            } else {
+                http_response_code(400);
+                echo json_encode(['error' => 'No valid fields to update or update failed']);
+            }
+        }
+        break;
+
+    case '/auth/change-password':
+        if ($method === 'POST') {
+            $user = requireAuth($token, $auth);
+            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            $currentPassword = $data['current_password'] ?? '';
+            $newPassword     = $data['new_password'] ?? '';
+
+            if (empty($currentPassword) || empty($newPassword)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'current_password and new_password are required']);
+                break;
+            }
+
+            $pwError = validatePasswordStrength($newPassword);
+            if ($pwError) {
+                http_response_code(400);
+                echo json_encode(['error' => $pwError]);
+                break;
+            }
+
+            $result = $auth->changePassword($user['user_id'], $currentPassword, $newPassword);
+            if ($result['success']) {
+                echo json_encode(['success' => true, 'message' => 'Password changed successfully']);
+            } else {
+                http_response_code(400);
+                echo json_encode(['error' => $result['error']]);
+            }
+        }
+        break;
+
+    case '/auth/forgot-password':
+        if ($method === 'POST') {
+            $data  = json_decode(file_get_contents('php://input'), true) ?? [];
+            $email = trim($data['email'] ?? '');
+
+            if (empty($email)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'email is required']);
+                break;
+            }
+
+            $resetData = $auth->createPasswordResetToken($email);
+
+            // Always respond with success to prevent user enumeration
+            if ($resetData) {
+                $emailService = new EmailService();
+                if (!$emailService->sendPasswordResetEmail($resetData['email'], $resetData['token'], $resetData['expires_at'])) {
+                    error_log("Failed to send password reset email to " . $resetData['email']);
+                }
+            }
+
+            echo json_encode(['success' => true, 'message' => 'If an account with that email exists, a password reset link has been sent']);
+        }
+        break;
+
+    case '/auth/reset-password':
+        if ($method === 'POST') {
+            $data        = json_decode(file_get_contents('php://input'), true) ?? [];
+            $token_value = $data['token'] ?? '';
+            $newPassword = $data['new_password'] ?? '';
+
+            if (empty($token_value) || empty($newPassword)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'token and new_password are required']);
+                break;
+            }
+
+            $pwError = validatePasswordStrength($newPassword);
+            if ($pwError) {
+                http_response_code(400);
+                echo json_encode(['error' => $pwError]);
+                break;
+            }
+
+            $result = $auth->resetPassword($token_value, $newPassword);
+            if ($result['success']) {
+                echo json_encode(['success' => true, 'message' => 'Password has been reset successfully']);
+            } else {
+                http_response_code(400);
+                echo json_encode(['error' => $result['error']]);
+            }
+        }
+        break;
+
+    case '/auth/logout':
+        if ($method === 'POST') {
+            requireAuth($token, $auth);
+            // Stateless JWT: token invalidation is handled client-side
+            echo json_encode(['success' => true, 'message' => 'Logged out successfully']);
+        }
+        break;
+
+    case '/auth/profile/avatar':
+        if ($method === 'PUT') {
+            $user = requireAuth($token, $auth);
+
+            if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] === UPLOAD_ERR_NO_FILE) {
+                http_response_code(400);
+                echo json_encode(['error' => 'No file uploaded']);
+                break;
+            }
+
+            $fileService = new FileService();
+            $result = $fileService->uploadAvatar($user['user_id'], $_FILES['avatar']);
+
+            if (!$result['success']) {
+                http_response_code(400);
+                echo json_encode(['error' => $result['error']]);
+                break;
+            }
+
+            $auth->updateAvatar($user['user_id'], $result['path']);
+            $profile = $auth->getUserById($user['user_id']);
+            echo json_encode(['success' => true, 'message' => 'Avatar updated successfully', 'data' => $profile]);
+        }
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Not found']);
         break;
 }
-
