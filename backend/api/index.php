@@ -93,23 +93,43 @@ $studentService = new StudentService();
 $universityService = new UniversityService();
 
 // Extract token from Authorization header
-$headers = getallheaders();
 $token = null;
-if (isset($headers['Authorization'])) {
-    $token = str_replace('Bearer ', '', $headers['Authorization']);
+
+// Try multiple methods to get Authorization header (robust across different server configs)
+if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
+} elseif (isset($_SERVER['CONTENT_TYPE']) && function_exists('getallheaders')) {
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
+    } elseif (isset($headers['authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['authorization']);
+    }
+} else {
+    // Fallback: check if running on Apache with mod_php
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
+    }
 }
 
 function requireAuth($token, $auth, $allowedRoles = []) {
     if (!$token) {
         http_response_code(401);
-        echo json_encode(['error' => 'Unauthorized']);
+        echo json_encode([
+            'error' => 'Unauthorized',
+            'debug' => getenv('APP_DEBUG') === 'true' ? 'No token provided' : null
+        ]);
         exit;
     }
 
     $payload = $auth->verifyToken($token);
     if (!$payload) {
         http_response_code(401);
-        echo json_encode(['error' => 'Invalid token']);
+        echo json_encode([
+            'error' => 'Invalid token',
+            'debug' => getenv('APP_DEBUG') === 'true' ? 'Token verification failed' : null
+        ]);
         exit;
     }
 
@@ -130,6 +150,20 @@ function validatePasswordStrength(string $password): ?string {
 }
 
 // Route handling
+
+// ─── Debug endpoint (shows what headers are received) ─────────────────────
+if ($path === '/debug/headers' && $method === 'GET') {
+    echo json_encode([
+        'php_version' => phpversion(),
+        'headers_received' => [
+            'Authorization' => $_SERVER['HTTP_AUTHORIZATION'] ?? 'NOT SET',
+            'All $_SERVER HTTP_* vars' => array_filter($_SERVER, function($k) { return strpos($k, 'HTTP_') === 0; }, ARRAY_FILTER_USE_KEY)
+        ],
+        'token_extracted' => $token ? 'YES (length: ' . strlen($token) . ')' : 'NO',
+        'env_debug' => getenv('APP_DEBUG')
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
 
 // ─── Dynamic-path routes (must be checked before the switch) ─────────────────
 

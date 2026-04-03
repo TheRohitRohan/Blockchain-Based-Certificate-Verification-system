@@ -1,104 +1,250 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   Theme variables — defined outside @layer so they cascade correctly
+   and [data-theme="light"] wins over Tailwind's @layer base styles.
+   ================================================================ */
+
+/* -- Dark theme (default) ---------------------------------------- */
+:root,
+[data-theme="dark"] {
+  --bg:        #060606;
+  --surface:   #111111;
+  --surface2:  #1a1a1a;
+  --border:    #252525;
+  --border2:   #363636;
+  --text:      #f0f0f0;
+  --text2:     #aaaaaa;
+  --text3:     #777777;
+  --accent:    #ffffff;
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --yellow:    #f59e0b;
+  --blue:      #3b82f6;
+  --sidebar-w: 220px;
+  --radius:    6px;
+  --transition: 0.15s ease;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f5f5f5;
+/* -- Light theme -------------------------------------------------- */
+[data-theme="light"] {
+  --bg:        #f5f5f5;
+  --surface:   #ffffff;
+  --surface2:  #eeeeee;
+  --border:    #dedede;
+  --border2:   #cccccc;
+  --text:      #111111;
+  --text2:     #444444;
+  --text3:     #888888;
+  --accent:    #000000;
+  --green:     #16a34a;
+  --red:       #dc2626;
+  --yellow:    #d97706;
+  --blue:      #2563eb;
+  --sidebar-w: 220px;
+  --radius:    6px;
+  --transition: 0.15s ease;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+/* ================================================================
+   Base resets — inside @layer base so Tailwind controls ordering
+   ================================================================ */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-size: 16px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Mona Sans", system-ui, sans-serif;
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  ::-webkit-scrollbar { width: 1px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
 }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+/* ================================================================
+   Utility classes — inside @layer utilities
+   ================================================================ */
+@layer utilities {
+  /* -- Typography ------------------------------------------------- */
+  .display {
+    font-size: clamp(3.5rem, 10vw, 9rem);
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -0.035em;
+    font-variation-settings: "wdth" 100;
+  }
+
+  .display-sm {
+    font-size: clamp(2rem, 5vw, 4.5rem);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+  }
+
+  .label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text2);
+  }
+
+  .mono {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* -- Scroll reveal ---------------------------------------------- */
+  .sr {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.75s cubic-bezier(0.16,1,0.3,1),
+                transform 0.75s cubic-bezier(0.16,1,0.3,1);
+  }
+  .sr.visible { opacity: 1; transform: translateY(0); }
+
+  .sr-left {
+    opacity: 0;
+    transform: translateX(-32px);
+    transition: opacity 0.75s cubic-bezier(0.16,1,0.3,1),
+                transform 0.75s cubic-bezier(0.16,1,0.3,1);
+  }
+  .sr-left.visible { opacity: 1; transform: translateX(0); }
+
+  .sr-right {
+    opacity: 0;
+    transform: translateX(32px);
+    transition: opacity 0.75s cubic-bezier(0.16,1,0.3,1),
+                transform 0.75s cubic-bezier(0.16,1,0.3,1);
+  }
+  .sr-right.visible { opacity: 1; transform: translateX(0); }
+
+  .sr-scale {
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity 0.65s cubic-bezier(0.16,1,0.3,1),
+                transform 0.65s cubic-bezier(0.16,1,0.3,1);
+  }
+  .sr-scale.visible { opacity: 1; transform: scale(1); }
+
+  .sr-d1 { transition-delay: 0.05s; }
+  .sr-d2 { transition-delay: 0.12s; }
+  .sr-d3 { transition-delay: 0.19s; }
+  .sr-d4 { transition-delay: 0.26s; }
+  .sr-d5 { transition-delay: 0.33s; }
+  .sr-d6 { transition-delay: 0.40s; }
+
+  /* -- Dividers --------------------------------------------------- */
+  .rule-x { border-top: 1px solid var(--border); }
+  .rule-l { border-left: 1px solid var(--border); }
+
+  /* -- Buttons ---------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.75rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: background 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn-white {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn-white:hover {
+    opacity: 0.85;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+
+  /* -- Noise texture overlay -------------------------------------- */
+  .noise::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.5;
+  }
 }
 
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 16px;
-  transition: all 0.3s;
+/* -- Text scramble / caret / marquee (outside @layer) ------------- */
+@keyframes scramble {
+  0%  { content: '0xA3f2'; }
+  20% { content: '0x7B1c'; }
+  40% { content: '0xE9d4'; }
+  60% { content: '0x2Fc8'; }
+  80% { content: '0xB5a0'; }
+  100%{ content: '0xA3f2'; }
 }
 
-.btn-primary {
-  background-color: #007bff;
-  color: white;
+.caret::after {
+  content: '▋';
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+  color: var(--text);
 }
 
-.btn-primary:hover {
-  background-color: #0056b3;
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }
 
-.btn-secondary {
-  background-color: #6c757d;
-  color: white;
+.marquee-track {
+  display: flex;
+  gap: 4rem;
+  width: max-content;
+  animation: marquee 18s linear infinite;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
 
-.btn-danger {
-  background-color: #dc3545;
-  color: white;
+/* -- Landing page scan line animation ----------------------------- */
+@keyframes scan {
+  0%   { top: -2px; }
+  100% { top: 100%; }
 }
 
-.btn-success {
-  background-color: #28a745;
-  color: white;
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  font-size: 16px;
-}
-
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 12px;
-  text-align: left;
-  border-bottom: 1px solid #ddd;
-}
-
-.table th {
-  background-color: #f8f9fa;
-  font-weight: bold;
-}
-
