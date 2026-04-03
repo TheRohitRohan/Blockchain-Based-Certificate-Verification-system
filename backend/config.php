@@ -82,6 +82,11 @@ return [
         'require_signature' => env('REQUIRE_SIGNATURE'),
         'key_encryption_secret' => env('KEY_ENCRYPTION_SECRET'),
     ],
+    'supabase' => [
+        'url'         => env('SUPABASE_URL'),
+        'service_key' => env('SUPABASE_SERVICE_KEY'),
+        'public_url'  => env('SUPABASE_PUBLIC_URL'),
+    ],
     'mail' => [
         'host'       => env('MAIL_HOST', 'smtp.gmail.com'),
         'port'       => (int) env('MAIL_PORT', 587),

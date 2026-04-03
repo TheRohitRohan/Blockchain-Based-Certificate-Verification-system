@@ -11,6 +11,7 @@ class CertificateService {
     private $signatureService;
     private $metadataService;
     private $verificationEngine;
+    private $supabaseStorage;
     
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
@@ -19,6 +20,7 @@ class CertificateService {
         $this->signatureService = new SignatureService();
         $this->metadataService = new MetadataService();
         $this->verificationEngine = new VerificationEngine();
+        $this->supabaseStorage = new SupabaseStorage();
     }
     
     /**
@@ -123,14 +125,25 @@ class CertificateService {
             $blockNumber = $this->blockchain->getCurrentBlock();
             $chainId     = $this->getConfig()['blockchain']['chain_id'] ?? 1337;
 
-            // Step 11: Persist to database
+            // Step 11: Upload PDF to Supabase Storage ("upload" bucket)
+            // Filename format: cert_{studentId}_{certificateId}_{timestamp}_{random}.pdf
+            $supabaseFilename = "cert_{$student['student_id']}_{$certificateId}_" . time() . '_' . bin2hex(random_bytes(4)) . ".pdf";
+            try {
+                $fileUrl = $this->supabaseStorage->uploadFile('upload', $pdfPath, $supabaseFilename, 'application/pdf');
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                error_log("Certificate PDF upload to Supabase failed: " . $e->getMessage());
+                return ['success' => false, 'error' => 'Failed to store certificate file: ' . $e->getMessage()];
+            }
+
+            // Step 12: Persist to database
             $stmt = $this->db->prepare("
                 INSERT INTO certificates 
                 (certificate_id, student_id, university_id, course_name, degree_type, issue_date,
-                 certificate_hash, blockchain_tx_hash, pdf_path, qr_code_path, status,
+                 certificate_hash, blockchain_tx_hash, pdf_path, file_url, qr_code_path, status,
                  metadata_hash, pdf_hash, onchain_hash, metadata_json, signature_status,
                  block_number, chain_id, schema_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $pdfFilename = basename($pdfPath);
@@ -145,6 +158,7 @@ class CertificateService {
                 $onchainHash,
                 $txHash,                // null when mock, real hash when blockchain worked
                 $pdfFilename,
+                $fileUrl,               // Public URL from Supabase
                 $qrCodeFileName,
                 $metadataHash,
                 $pdfHash,
@@ -169,10 +183,15 @@ class CertificateService {
                 'blockchain_mode'  => $isMock ? 'mock' : 'live',
                 'signature_status' => $signatureStatus,
                 'pdf_path'         => $pdfFilename,
+                'file_url'         => $fileUrl,
             ];
             
         } catch (\Exception $e) {
             $this->db->rollBack();
+            // If Supabase upload succeeded but the DB commit failed, clean up the orphan file
+            if (!empty($supabaseFilename)) {
+                $this->supabaseStorage->deleteFile('upload', $supabaseFilename);
+            }
             error_log("Certificate creation failed: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
@@ -312,19 +331,30 @@ class CertificateService {
             $blockNumber = $this->blockchain->getCurrentBlock();
             $chainId     = $this->getConfig()['blockchain']['chain_id'] ?? 1337;
 
-            // ── Step 9: Move to final storage location ────────────────────────────
-            $finalFilename = $metadata['certificate_id'] . '_uploaded_' . date('Y-m-d') . '.pdf';
-            $finalPath     = $this->getConfig()['storage']['pdf_path'] . $finalFilename;
-            rename($tempPath, $finalPath);
+            // ── Step 9: Upload processed PDF to Supabase Storage ("upload" bucket) ──
+            // Filename format: cert_{certificateId}_uploaded_{date}_{timestamp}_{random}.pdf
+            $supabaseFilename = $metadata['certificate_id'] . '_uploaded_' . date('Y-m-d') . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.pdf';
+            try {
+                $fileUrl = $this->supabaseStorage->uploadFile('upload', $tempPath, $supabaseFilename, 'application/pdf');
+            } catch (\Exception $e) {
+                @unlink($tempPath);
+                $this->db->rollBack();
+                error_log("Certificate PDF upload to Supabase failed: " . $e->getMessage());
+                return ['success' => false, 'error' => 'Failed to store certificate file: ' . $e->getMessage()];
+            }
+
+            // Temp file is no longer needed; PHP will clean it up automatically
+            @unlink($tempPath);
+            unset($tempPath);
 
             // ── Step 10: Persist to database ──────────────────────────────────────
             $stmt = $this->db->prepare("
                 INSERT INTO certificates
                 (certificate_id, student_id, university_id, course_name, degree_type, issue_date,
-                 certificate_hash, blockchain_tx_hash, pdf_path, qr_code_path, status,
+                 certificate_hash, blockchain_tx_hash, pdf_path, file_url, qr_code_path, status,
                  metadata_hash, pdf_hash, onchain_hash, metadata_json, signature_status,
                  block_number, chain_id, schema_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $stmt->execute([
@@ -336,7 +366,10 @@ class CertificateService {
                 $fullMetadata['issue_date']  ?? date('Y-m-d'),
                 $onchainHash,
                 $blockchainResult['tx_hash'] ?? null,
-                $finalFilename,
+                null,                   // pdf_path: this certificate was uploaded directly to Supabase
+                                        // and never had a local filesystem copy. Null distinguishes
+                                        // it from generated certificates that retain a local pdf_path.
+                $fileUrl,               // Public URL from Supabase
                 $qrCodeFileName,        // Now populated for uploaded certificates
                 $metadataHash,
                 $pdfHash,
@@ -354,12 +387,17 @@ class CertificateService {
                 'success'          => true,
                 'certificate_id'   => $metadata['certificate_id'],
                 'signature_status' => $signatureStatus,
+                'file_url'         => $fileUrl,
                 'message'          => 'Certificate uploaded and processed successfully',
             ];
 
         } catch (\Exception $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
+            }
+            // If Supabase upload succeeded but the DB commit failed, clean up the orphan file
+            if (!empty($supabaseFilename)) {
+                $this->supabaseStorage->deleteFile('upload', $supabaseFilename);
             }
             if (isset($tempPath) && file_exists($tempPath)) {
                 @unlink($tempPath);
@@ -460,6 +498,20 @@ class CertificateService {
             $pdfFilename = basename($pdfPath);
             $newPdfHash = $this->pdfService->calculatePDFHash($pdfPath);
 
+            // Upload regenerated PDF to Supabase Storage ("upload" bucket)
+            $supabaseFilename = null;
+            $fileUrl = null;
+            // Capture the previous Supabase file URL so we can delete it after the commit
+            $previousFileUrl = $existing['file_url'] ?? null;
+            try {
+                $supabaseFilename = "cert_{$certificateId}_updated_" . time() . '_' . bin2hex(random_bytes(4)) . ".pdf";
+                $fileUrl = $this->supabaseStorage->uploadFile('upload', $pdfPath, $supabaseFilename, 'application/pdf');
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                error_log("updateCertificate: Supabase upload failed for {$certificateId}: " . $e->getMessage());
+                return ['success' => false, 'error' => 'Failed to store updated certificate file: ' . $e->getMessage()];
+            }
+
             // Build SET clause
             $setClauses = [];
             $params = [];
@@ -469,6 +521,8 @@ class CertificateService {
             }
             $setClauses[] = 'pdf_path = ?';
             $params[] = $pdfFilename;
+            $setClauses[] = 'file_url = ?';
+            $params[] = $fileUrl;
             $setClauses[] = 'pdf_hash = ?';
             $params[] = $newPdfHash;
             $setClauses[] = 'updated_at = NOW()';
@@ -482,6 +536,11 @@ class CertificateService {
 
             $this->db->commit();
 
+            // Delete the previous Supabase file now that the DB record points to the new one
+            if (!empty($previousFileUrl)) {
+                $this->supabaseStorage->deleteFileByUrl($previousFileUrl);
+            }
+
             // Invalidate cache
             $cache = Cache::getInstance();
             $cache->delete("verify:{$certificateId}");
@@ -491,6 +550,10 @@ class CertificateService {
 
         } catch (\Exception $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
+            // If Supabase upload succeeded but the DB commit failed, clean up the orphan file
+            if (!empty($supabaseFilename)) {
+                $this->supabaseStorage->deleteFile('upload', $supabaseFilename);
+            }
             error_log("updateCertificate Exception for {$certificateId}: " . $e->getMessage() . " | " . $e->getTraceAsString());
             return ['success' => false, 'error' => $e->getMessage()];
         }
@@ -521,12 +584,17 @@ class CertificateService {
 
             $this->db->commit();
 
-            // Delete PDF file
+            // Delete local PDF file if it exists
             if (!empty($existing['pdf_path'])) {
                 $pdfFull = $this->getConfig()['storage']['pdf_path'] . $existing['pdf_path'];
                 if (file_exists($pdfFull)) {
                     @unlink($pdfFull);
                 }
+            }
+
+            // Delete Supabase file if one was stored
+            if (!empty($existing['file_url'])) {
+                $this->supabaseStorage->deleteFileByUrl($existing['file_url']);
             }
 
             // Invalidate cache
@@ -618,6 +686,7 @@ class CertificateService {
                 c.certificate_hash,
                 c.blockchain_tx_hash,
                 c.pdf_path,
+                c.file_url,
                 c.qr_code_path,
                 c.status,
                 c.revoked_at,
