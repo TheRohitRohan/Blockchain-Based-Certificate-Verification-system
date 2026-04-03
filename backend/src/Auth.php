@@ -159,6 +159,17 @@ class Auth {
         return $stmt->execute([$avatarUrl, $userId]);
     }
 
+    /**
+     * Return only the avatar_url for a user — used to capture the existing
+     * avatar before a new one is uploaded so we can clean up Supabase afterwards.
+     */
+    public function getAvatarUrl(int $userId): ?string {
+        $stmt = $this->db->prepare("SELECT avatar_url FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        return ($row && $row['avatar_url']) ? $row['avatar_url'] : null;
+    }
+
     public function generateToken($user) {
         $config = require __DIR__ . '/../config.php';
         $secret = $config['jwt']['secret'];

@@ -277,8 +277,12 @@ class PublicVerificationService {
 
         // Fall back to Supabase public URL (uploaded certificates have no local copy)
         if (!empty($certificate['file_url'])) {
+            $parsedPath = parse_url($certificate['file_url'], PHP_URL_PATH);
+            $filename   = ($parsedPath !== false && $parsedPath !== null)
+                ? basename($parsedPath)
+                : 'certificate.pdf';
             return [
-                'filename'     => basename(parse_url($certificate['file_url'], PHP_URL_PATH)),
+                'filename'     => $filename,
                 'size'         => null,
                 'base64'       => null,
                 'file_url'     => $certificate['file_url'],

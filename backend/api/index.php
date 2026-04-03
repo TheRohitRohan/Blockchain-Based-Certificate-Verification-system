@@ -1010,9 +1010,9 @@ switch ($path) {
 
             $fileService = new FileService();
 
-            // Capture old avatar URL before uploading the new one, so we can clean up afterwards
-            $existingProfile = $auth->getUserById($user['user_id']);
-            $oldAvatarUrl    = $existingProfile['avatar_url'] ?? null;
+            // Capture only the existing avatar URL (lightweight query) before uploading,
+            // so we can delete the old Supabase file after a successful update.
+            $oldAvatarUrl = $auth->getAvatarUrl($user['user_id']);
 
             $result = $fileService->uploadAvatar($user['user_id'], $_FILES['avatar']);
 

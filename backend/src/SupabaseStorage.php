@@ -157,16 +157,23 @@ class SupabaseStorage {
 
     /**
      * Delete a file from Supabase Storage by its public URL.
-     * Extracts the filename from the URL path (last segment after /upload/).
+     * Derives the bucket and filename by stripping the known public base URL prefix,
+     * so this works regardless of which bucket the file is in.
      *
      * @param string $fileUrl Public URL of the file
      * @return bool
      */
     public function deleteFileByUrl(string $fileUrl): bool {
-        if (preg_match('#/upload/(.+)$#', $fileUrl, $matches)) {
-            return $this->deleteFile('upload', $matches[1]);
+        $prefix = $this->publicBaseUrl . '/';
+        if (strpos($fileUrl, $prefix) === 0) {
+            // Remaining path is "{bucket}/{filename}"
+            $relative = substr($fileUrl, strlen($prefix));
+            $parts    = explode('/', $relative, 2);
+            if (count($parts) === 2 && $parts[0] !== '' && $parts[1] !== '') {
+                return $this->deleteFile($parts[0], $parts[1]);
+            }
         }
-        error_log("SupabaseStorage::deleteFileByUrl: cannot parse filename from URL: {$fileUrl}");
+        error_log("SupabaseStorage::deleteFileByUrl: cannot parse bucket/filename from URL: {$fileUrl}");
         return false;
     }
 }

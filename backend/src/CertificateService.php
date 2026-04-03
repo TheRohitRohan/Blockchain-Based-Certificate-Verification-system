@@ -366,7 +366,9 @@ class CertificateService {
                 $fullMetadata['issue_date']  ?? date('Y-m-d'),
                 $onchainHash,
                 $blockchainResult['tx_hash'] ?? null,
-                null,                   // pdf_path: no local file; PDF is stored in Supabase only
+                null,                   // pdf_path: this certificate was uploaded directly to Supabase
+                                        // and never had a local filesystem copy. Null distinguishes
+                                        // it from generated certificates that retain a local pdf_path.
                 $fileUrl,               // Public URL from Supabase
                 $qrCodeFileName,        // Now populated for uploaded certificates
                 $metadataHash,
