@@ -256,6 +256,14 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
 if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
     $user = requireAuth($token, $auth, ['admin', 'university']);
     $universityId = (int)$m[1];
+    // Check existence first so callers get 404, not 403, for unknown IDs.
+    // Admins can update inactive universities; others cannot.
+    $university = $universityService->getUniversity($universityId, $user['role'] === 'admin');
+    if (!$university) {
+        http_response_code(404);
+        echo json_encode(['error' => 'University not found']);
+        exit;
+    }
     if (!$universityService->checkUniversityAuthorization($universityId, 'update', $user['role'], $user['university_id'] ?? null)) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
@@ -264,12 +272,6 @@ if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
     $data = json_decode(file_get_contents('php://input'), true) ?? [];
     $result = $universityService->updateUniversity($universityId, $data);
     if ($result === false) {
-        $university = $universityService->getUniversity($universityId, true);
-        if (!$university) {
-            http_response_code(404);
-            echo json_encode(['error' => 'University not found']);
-            exit;
-        }
         http_response_code(400);
         echo json_encode(['error' => 'No updatable fields provided']);
         exit;
