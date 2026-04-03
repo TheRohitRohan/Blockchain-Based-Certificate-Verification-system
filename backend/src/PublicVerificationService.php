@@ -246,52 +246,36 @@ class PublicVerificationService {
     }
     
     /**
-     * Get stored certificate PDF (as base64 and URL).
-     * Tries the local filesystem first; falls back to the Supabase file_url
-     * when no local copy is present (e.g. certificates uploaded via the upload flow).
+     * Get stored certificate PDF (as base64 and URL)
+     * Public method for API access
      */
     public function getStoredCertificatePDF(string $certificateId): ?array {
         $certificate = $this->getStoredCertificate($certificateId);
         
-        if (!$certificate) {
+        if (!$certificate || empty($certificate['pdf_path'])) {
             return null;
         }
         
+        $pdfPath = $this->config['storage']['pdf_path'] . $certificate['pdf_path'];
+        
+        if (!file_exists($pdfPath)) {
+            return null;
+        }
+        
+        // Read PDF file
+        $pdfContent = file_get_contents($pdfPath);
+        $pdfBase64 = base64_encode($pdfContent);
+        
+        // Generate download URL
         $downloadUrl = $this->config['app']['base_url'] . '/public/certificate/download?certificate_id=' . urlencode($certificateId);
-
-        // Prefer local file when it exists
-        if (!empty($certificate['pdf_path'])) {
-            $pdfPath = $this->config['storage']['pdf_path'] . $certificate['pdf_path'];
-            if (file_exists($pdfPath)) {
-                $pdfContent = file_get_contents($pdfPath);
-                $pdfBase64  = base64_encode($pdfContent);
-                return [
-                    'filename'     => $certificate['pdf_path'],
-                    'size'         => filesize($pdfPath),
-                    'base64'       => $pdfBase64,
-                    'download_url' => $downloadUrl,
-                    'view_url'     => $downloadUrl . '&view=1',
-                ];
-            }
-        }
-
-        // Fall back to Supabase public URL (uploaded certificates have no local copy)
-        if (!empty($certificate['file_url'])) {
-            $parsedPath = parse_url($certificate['file_url'], PHP_URL_PATH);
-            $filename   = ($parsedPath !== false && $parsedPath !== null)
-                ? basename($parsedPath)
-                : 'certificate.pdf';
-            return [
-                'filename'     => $filename,
-                'size'         => null,
-                'base64'       => null,
-                'file_url'     => $certificate['file_url'],
-                'download_url' => $downloadUrl,
-                'view_url'     => $downloadUrl . '&view=1',
-            ];
-        }
-
-        return null;
+        
+        return [
+            'filename' => $certificate['pdf_path'],
+            'size' => filesize($pdfPath),
+            'base64' => $pdfBase64,
+            'download_url' => $downloadUrl,
+            'view_url' => $downloadUrl . '&view=1'
+        ];
     }
     
     /**
