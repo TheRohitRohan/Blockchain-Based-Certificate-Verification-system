@@ -2,20 +2,17 @@
 
 namespace App;
 
-/**
- * FileService - Handles user avatar uploads via Supabase Storage.
- *
- * All files are stored in the "upload" bucket.
- * Filename format: avatar_{userId}_{timestamp}.{ext}
- */
 class FileService {
 
-    private SupabaseStorage $supabaseStorage;
-    private const MAX_AVATAR_SIZE    = 2 * 1024 * 1024; // 2 MB
+    private string $avatarDir;
+    private const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
     private const ALLOWED_MIME_TYPES = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
 
     public function __construct() {
-        $this->supabaseStorage = new SupabaseStorage();
+        $this->avatarDir = __DIR__ . '/../storage/avatars';
+        if (!is_dir($this->avatarDir)) {
+            mkdir($this->avatarDir, 0755, true);
+        }
     }
 
     /**
@@ -29,11 +26,12 @@ class FileService {
             return ['valid' => false, 'error' => 'File upload error'];
         }
 
-        if ($file['size'] > self::MAX_AVATAR_SIZE) {
+        $maxSize = self::MAX_AVATAR_SIZE;
+        if ($file['size'] > $maxSize) {
             return ['valid' => false, 'error' => 'File size exceeds 2MB limit'];
         }
 
-        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
         $mimeType = $finfo->file($file['tmp_name']);
 
         if (!array_key_exists($mimeType, self::ALLOWED_MIME_TYPES)) {
@@ -44,53 +42,52 @@ class FileService {
     }
 
     /**
-     * Upload an avatar for the given user ID to Supabase Storage ("upload" bucket).
-     * Returns the public URL and the stored filename for optional rollback.
+     * Upload an avatar for the given user ID.
+     * Deletes any existing avatar for that user first.
      *
      * @param int   $userId
      * @param array $file   $_FILES entry
-     * @return array ['success' => bool, 'path' => string|null, 'error' => string|null, 'supabase_filename' => string|null]
+     * @return array ['success' => bool, 'path' => string|null, 'error' => string|null]
      */
     public function uploadAvatar(int $userId, array $file): array {
         $validation = $this->validateImageFile($file);
         if (!$validation['valid']) {
-            return ['success' => false, 'path' => null, 'error' => $validation['error'], 'supabase_filename' => null];
+            return ['success' => false, 'path' => null, 'error' => $validation['error']];
         }
+
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($file['tmp_name']);
+        $ext = self::ALLOWED_MIME_TYPES[$mimeType];
 
         if (!is_uploaded_file($file['tmp_name'])) {
-            return ['success' => false, 'path' => null, 'error' => 'Invalid upload source', 'supabase_filename' => null];
+            return ['success' => false, 'path' => null, 'error' => 'Invalid upload source'];
         }
 
-        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->file($file['tmp_name']);
-        $ext      = self::ALLOWED_MIME_TYPES[$mimeType];
+        // Delete old avatar if it exists
+        $this->deleteOldAvatar($userId);
 
-        // Filename format: avatar_{userId}_{timestamp}_{random}.{ext}
-        $filename = "avatar_{$userId}_" . time() . '_' . bin2hex(random_bytes(4)) . ".{$ext}";
+        $filename = $userId . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destPath = $this->avatarDir . '/' . $filename;
 
-        try {
-            $publicUrl = $this->supabaseStorage->uploadFile('upload', $file['tmp_name'], $filename, $mimeType);
-        } catch (\Exception $e) {
-            error_log("Avatar upload to Supabase failed: " . $e->getMessage());
-            return ['success' => false, 'path' => null, 'error' => 'Failed to upload avatar: ' . $e->getMessage(), 'supabase_filename' => null];
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            return ['success' => false, 'path' => null, 'error' => 'Failed to save avatar'];
         }
 
-        return ['success' => true, 'path' => $publicUrl, 'error' => null, 'supabase_filename' => $filename];
+        // Return relative path for storage in DB
+        $relativePath = 'storage/avatars/' . $filename;
+        return ['success' => true, 'path' => $relativePath, 'error' => null];
     }
 
     /**
-     * Delete an avatar file from Supabase Storage ("upload" bucket).
-     * Used for rollback when the DB update fails after a successful upload.
+     * Delete the existing avatar file(s) for a user.
      *
-     * @param string $filename Filename in the "upload" bucket
-     * @return bool
+     * @param int $userId
      */
-    public function deleteAvatarFile(string $filename): bool {
-        try {
-            return $this->supabaseStorage->deleteFile('upload', $filename);
-        } catch (\Exception $e) {
-            error_log("Avatar delete from Supabase failed: " . $e->getMessage());
-            return false;
+    public function deleteOldAvatar(int $userId): void {
+        foreach (array_values(self::ALLOWED_MIME_TYPES) as $ext) {
+            foreach (glob($this->avatarDir . '/' . $userId . '_*.' . $ext) ?: [] as $path) {
+                unlink($path);
+            }
         }
     }
 }

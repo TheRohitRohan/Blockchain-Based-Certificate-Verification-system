@@ -44,7 +44,7 @@ class Auth {
     }
 
     public function getUserById($id) {
-        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, avatar_url, avatar_url AS avatar_path, university_id FROM users WHERE id = ?");
+        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, avatar_path, university_id FROM users WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
@@ -154,20 +154,9 @@ class Auth {
         return ['success' => true];
     }
 
-    public function updateAvatar(int $userId, string $avatarUrl): bool {
-        $stmt = $this->db->prepare("UPDATE users SET avatar_url = ? WHERE id = ?");
-        return $stmt->execute([$avatarUrl, $userId]);
-    }
-
-    /**
-     * Return only the avatar_url for a user — used to capture the existing
-     * avatar before a new one is uploaded so we can clean up Supabase afterwards.
-     */
-    public function getAvatarUrl(int $userId): ?string {
-        $stmt = $this->db->prepare("SELECT avatar_url FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $row = $stmt->fetch();
-        return ($row && $row['avatar_url']) ? $row['avatar_url'] : null;
+    public function updateAvatar(int $userId, string $avatarPath): bool {
+        $stmt = $this->db->prepare("UPDATE users SET avatar_path = ? WHERE id = ?");
+        return $stmt->execute([$avatarPath, $userId]);
     }
 
     public function generateToken($user) {
