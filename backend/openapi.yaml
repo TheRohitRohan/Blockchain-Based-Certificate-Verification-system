@@ -1577,7 +1577,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: No updatable fields provided
+          description: No updatable fields provided or no changes detected
           content:
             application/json:
               schema:

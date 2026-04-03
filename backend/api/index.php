@@ -273,7 +273,7 @@ if ($method === 'PUT' && preg_match('#^/universities/(\d+)$#', $path, $m)) {
     $result = $universityService->updateUniversity($universityId, $data);
     if ($result === false) {
         http_response_code(400);
-        echo json_encode(['error' => 'No updatable fields provided']);
+        echo json_encode(['error' => 'No updatable fields provided or no changes detected']);
         exit;
     }
     echo json_encode(['success' => true, 'message' => 'University updated successfully']);
