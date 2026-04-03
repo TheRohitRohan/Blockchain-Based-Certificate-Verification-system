@@ -135,6 +135,9 @@ components:
           type: string
           format: date
           example: "2022-08-01"
+        is_active:
+          type: boolean
+          example: true
         created_at:
           type: string
           format: date-time
@@ -792,7 +795,22 @@ paths:
                   students:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Student'
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
         '401':
           description: Unauthorized
           content:
@@ -1471,6 +1489,660 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students/{id}:
+    get:
+      tags:
+        - Students
+      summary: Get single student details
+      description: Returns student profile. Accessible by admin, same university, or the student themselves.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Student row ID
+      responses:
+        '200':
+          description: Student details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      student_id:
+                        type: string
+                      university_id:
+                        type: integer
+                      is_active:
+                        type: boolean
+                      enrollment_date:
+                        type: string
+                        format: date
+                      date_of_birth:
+                        type: string
+                        format: date
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Students
+      summary: Update student profile
+      description: Update allowed fields (full_name, date_of_birth). Only admin or the student themselves.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: Jane Smith
+                date_of_birth:
+                  type: string
+                  format: date
+                  example: "2000-01-15"
+      responses:
+        '200':
+          description: Student updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: No updatable fields provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Students
+      summary: Soft delete student (deactivate)
+      description: Sets is_active = FALSE. Does not delete the user or certificates. Admin only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Student deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students/{id}/certificates:
+    get:
+      tags:
+        - Students
+      summary: Get student certificates
+      description: Returns paginated certificates for a student. Accessible by admin, the student themselves, or their university.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - name: course_name
+          in: query
+          schema:
+            type: string
+        - name: issue_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: issue_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated certificate list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        university_name:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}:
+    get:
+      tags:
+        - Universities
+      summary: Get university details
+      description: Returns university information. Public access (no authentication required).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      code:
+                        type: string
+                      address:
+                        type: string
+                      contact_email:
+                        type: string
+                        format: email
+                      contact_phone:
+                        type: string
+                      is_active:
+                        type: boolean
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Universities
+      summary: Update university info
+      description: Update allowed fields (name, address, contact_email, contact_phone). Admin or the owning university.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: MIT
+                address:
+                  type: string
+                  example: Cambridge, MA
+                contact_email:
+                  type: string
+                  format: email
+                  example: admin@mit.edu
+                contact_phone:
+                  type: string
+                  example: "+1-617-253-1000"
+      responses:
+        '200':
+          description: University updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: No updatable fields provided or no changes detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Universities
+      summary: Soft delete university (deactivate)
+      description: Sets is_active = FALSE. Admin only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/students:
+    get:
+      tags:
+        - Universities
+      summary: List students in a university
+      description: Returns paginated students for a university. Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: enrollment_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: enrollment_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated student list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/certificates:
+    get:
+      tags:
+        - Universities
+      summary: List certificates issued by a university
+      description: Returns paginated certificates for a university. Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - name: course_name
+          in: query
+          schema:
+            type: string
+        - name: issue_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: issue_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated certificate list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        student_name:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/stats:
+    get:
+      tags:
+        - Universities
+      summary: Get university statistics
+      description: Returns aggregate stats (students, certificates). Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      total_students:
+                        type: integer
+                        example: 150
+                      active_students:
+                        type: integer
+                        example: 140
+                      total_certificates:
+                        type: integer
+                        example: 300
+                      active_certificates:
+                        type: integer
+                        example: 290
+                      revoked_certificates:
+                        type: integer
+                        example: 10
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: University not found
           content:
             application/json:
               schema:

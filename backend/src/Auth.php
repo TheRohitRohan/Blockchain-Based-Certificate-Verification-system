@@ -165,10 +165,11 @@ class Auth {
         
         $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
         $payload = json_encode([
-            'user_id' => $user['id'],
-            'email' => $user['email'],
-            'role' => $user['role'],
-            'exp' => time() + $config['jwt']['expiration']
+            'user_id'       => $user['id'],
+            'email'         => $user['email'],
+            'role'          => $user['role'],
+            'university_id' => $user['university_id'] ?? null,
+            'exp'           => time() + $config['jwt']['expiration']
         ]);
 
         $base64Header = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
