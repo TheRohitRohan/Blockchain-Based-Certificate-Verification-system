@@ -126,8 +126,8 @@ class CertificateService {
             $chainId     = $this->getConfig()['blockchain']['chain_id'] ?? 1337;
 
             // Step 11: Upload PDF to Supabase Storage ("upload" bucket)
-            // Filename format: cert_{studentId}_{certificateId}_{timestamp}.pdf
-            $supabaseFilename = "cert_{$student['student_id']}_{$certificateId}_" . time() . ".pdf";
+            // Filename format: cert_{studentId}_{certificateId}_{timestamp}_{random}.pdf
+            $supabaseFilename = "cert_{$student['student_id']}_{$certificateId}_" . time() . '_' . bin2hex(random_bytes(4)) . ".pdf";
             try {
                 $fileUrl = $this->supabaseStorage->uploadFile('upload', $pdfPath, $supabaseFilename, 'application/pdf');
             } catch (\Exception $e) {
@@ -332,8 +332,8 @@ class CertificateService {
             $chainId     = $this->getConfig()['blockchain']['chain_id'] ?? 1337;
 
             // ── Step 9: Upload processed PDF to Supabase Storage ("upload" bucket) ──
-            // Filename format: cert_{certificateId}_uploaded_{timestamp}.pdf
-            $supabaseFilename = $metadata['certificate_id'] . '_uploaded_' . date('Y-m-d') . '_' . time() . '.pdf';
+            // Filename format: cert_{certificateId}_uploaded_{date}_{timestamp}_{random}.pdf
+            $supabaseFilename = $metadata['certificate_id'] . '_uploaded_' . date('Y-m-d') . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.pdf';
             try {
                 $fileUrl = $this->supabaseStorage->uploadFile('upload', $tempPath, $supabaseFilename, 'application/pdf');
             } catch (\Exception $e) {
@@ -500,7 +500,7 @@ class CertificateService {
             $supabaseFilename = null;
             $fileUrl = null;
             try {
-                $supabaseFilename = "cert_{$certificateId}_updated_" . time() . ".pdf";
+                $supabaseFilename = "cert_{$certificateId}_updated_" . time() . '_' . bin2hex(random_bytes(4)) . ".pdf";
                 $fileUrl = $this->supabaseStorage->uploadFile('upload', $pdfPath, $supabaseFilename, 'application/pdf');
             } catch (\Exception $e) {
                 $this->db->rollBack();

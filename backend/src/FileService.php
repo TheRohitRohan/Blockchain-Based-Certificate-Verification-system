@@ -65,8 +65,8 @@ class FileService {
         $mimeType = $finfo->file($file['tmp_name']);
         $ext      = self::ALLOWED_MIME_TYPES[$mimeType];
 
-        // Filename format: avatar_{userId}_{timestamp}.{ext}
-        $filename = "avatar_{$userId}_" . time() . ".{$ext}";
+        // Filename format: avatar_{userId}_{timestamp}_{random}.{ext}
+        $filename = "avatar_{$userId}_" . time() . '_' . bin2hex(random_bytes(4)) . ".{$ext}";
 
         try {
             $publicUrl = $this->supabaseStorage->uploadFile('upload', $file['tmp_name'], $filename, $mimeType);
