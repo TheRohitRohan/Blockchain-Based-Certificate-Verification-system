@@ -35,7 +35,8 @@ class EmailService {
             $this->mailConfig['from_address'],
             $this->mailConfig['from_name']
         );
-
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = 'error_log';
         $mail->isHTML(true);
         $mail->CharSet = 'UTF-8';
 
@@ -64,7 +65,8 @@ class EmailService {
             $mail->Subject = 'Password Reset Request';
             $mail->Body    = $this->buildResetEmailBody($resetUrl, $expiryFormatted);
             $mail->AltBody = "You requested a password reset. Visit: {$resetUrl} — This link expires at {$expiryFormatted}.";
-
+            $mail->SMTPDebug = 2;
+            $mail->Debugoutput = 'error_log';
             $mail->send();
             return true;
         } catch (Exception $e) {
@@ -89,7 +91,8 @@ class EmailService {
             $mail->Subject = $subject;
             $mail->Body    = $body;
             $mail->AltBody = $altBody ?: strip_tags($body);
-
+            $mail->SMTPDebug = 2;
+            $mail->Debugoutput = 'error_log';
             $mail->send();
             return true;
         } catch (Exception $e) {
