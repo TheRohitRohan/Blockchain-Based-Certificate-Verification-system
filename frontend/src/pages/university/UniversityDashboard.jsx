@@ -23,12 +23,23 @@ export default function UniversityDashboard() {
     .sort((a, b) => new Date(b.issue_date) - new Date(a.issue_date))
     .slice(0, 5);
 
+  // Support both old (users table) and new (university_admins table) auth
+  const adminDisplayName = user?.admin_name ?? user?.full_name ?? user?.email;
+  const universityDisplayName = user?.university_name;
+
   return (
     <div>
       <div className="page-header">
         <div>
           <p className="page-title">Dashboard</p>
-          <p className="page-sub">Welcome, {user?.full_name ?? user?.email}</p>
+          <p className="page-sub">
+            Welcome, {adminDisplayName}
+            {universityDisplayName && (
+              <span style={{ color: 'var(--text3)', marginLeft: 6 }}>
+                — {universityDisplayName}
+              </span>
+            )}
+          </p>
         </div>
       </div>
 

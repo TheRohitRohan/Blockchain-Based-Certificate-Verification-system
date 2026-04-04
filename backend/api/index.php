@@ -424,6 +424,226 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m))
     exit;
 }
 
+// ─── University Auth routes (university_admins table) ─────────────────────────
+
+// POST /auth/university/register — create a new university + admin account
+if ($method === 'POST' && $path === '/auth/university/register') {
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
+
+    // Required field validation
+    $required = ['university_name', 'university_email', 'university_phone', 'university_address',
+                 'admin_name', 'admin_email', 'admin_password'];
+    foreach ($required as $field) {
+        if (empty(trim($data[$field] ?? ''))) {
+            http_response_code(400);
+            echo json_encode(['error' => "Field '$field' is required"]);
+            exit;
+        }
+    }
+
+    // Email format validation
+    if (!filter_var($data['university_email'], FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid university email format']);
+        exit;
+    }
+    if (!filter_var($data['admin_email'], FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid admin email format']);
+        exit;
+    }
+
+    // Password strength validation
+    $pwError = validatePasswordStrength($data['admin_password']);
+    if ($pwError) {
+        http_response_code(400);
+        echo json_encode(['error' => $pwError]);
+        exit;
+    }
+
+    $db = Database::getInstance()->getConnection();
+
+    // Check for duplicate admin email in university_admins
+    $stmt = $db->prepare("SELECT id FROM university_admins WHERE email = ?");
+    $stmt->execute([strtolower(trim($data['admin_email']))]);
+    if ($stmt->fetch()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'An account with this admin email already exists']);
+        exit;
+    }
+
+    // Check for duplicate university email in universities
+    $stmt = $db->prepare("SELECT id FROM universities WHERE contact_email = ?");
+    $stmt->execute([strtolower(trim($data['university_email']))]);
+    if ($stmt->fetch()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'A university with this email already exists']);
+        exit;
+    }
+
+    try {
+        $db->beginTransaction();
+
+        // Generate a unique university code from the name
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($data['university_name'], 0, 8)));
+        $code = $baseCode;
+        $suffix = 1;
+        while (true) {
+            $stmt = $db->prepare("SELECT id FROM universities WHERE code = ?");
+            $stmt->execute([$code]);
+            if (!$stmt->fetch()) break;
+            $code = $baseCode . $suffix++;
+        }
+
+        // Insert university
+        $stmt = $db->prepare("
+            INSERT INTO universities (name, code, address, contact_email, contact_phone)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            trim($data['university_name']),
+            $code,
+            trim($data['university_address']),
+            strtolower(trim($data['university_email'])),
+            trim($data['university_phone'])
+        ]);
+        $universityId = (int)$db->lastInsertId();
+
+        // Hash admin password and insert admin
+        $passwordHash = password_hash($data['admin_password'], PASSWORD_DEFAULT);
+        $stmt = $db->prepare("
+            INSERT INTO university_admins (university_id, name, email, password)
+            VALUES (?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $universityId,
+            trim($data['admin_name']),
+            strtolower(trim($data['admin_email'])),
+            $passwordHash
+        ]);
+
+        $db->commit();
+
+        echo json_encode([
+            'success' => true,
+            'university_id' => $universityId,
+            'message' => 'University registered successfully'
+        ]);
+    } catch (\Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Registration failed. Please try again.']);
+    }
+    exit;
+}
+
+// POST /auth/university/login — university admin login
+if ($method === 'POST' && $path === '/auth/university/login') {
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
+    $email = strtolower(trim($data['email'] ?? ''));
+    $password = $data['password'] ?? '';
+
+    if (empty($email) || empty($password)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Email and password are required']);
+        exit;
+    }
+
+    $db = Database::getInstance()->getConnection();
+
+    $stmt = $db->prepare("
+        SELECT ua.id, ua.university_id, ua.name AS admin_name, ua.email,
+               ua.password, u.name AS university_name, u.contact_email AS university_email,
+               u.contact_phone AS university_phone, u.address AS university_address
+        FROM university_admins ua
+        JOIN universities u ON ua.university_id = u.id
+        WHERE ua.email = ? AND u.is_active = TRUE
+    ");
+    $stmt->execute([$email]);
+    $admin = $stmt->fetch();
+
+    if (!$admin || !password_verify($password, $admin['password'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Invalid email or password']);
+        exit;
+    }
+
+    // Generate JWT compatible with existing frontend AuthContext
+    $config = require __DIR__ . '/../config.php';
+    $secret = $config['jwt']['secret'];
+
+    $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
+    $payload = json_encode([
+        'user_id'          => $admin['id'],
+        'email'            => $admin['email'],
+        'role'             => 'university',
+        'university_id'    => $admin['university_id'],
+        'admin_name'       => $admin['admin_name'],
+        'university_name'  => $admin['university_name'],
+        'exp'              => time() + (int)($config['jwt']['expiration'] ?: 86400)
+    ]);
+
+    $b64Header  = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
+    $b64Payload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));
+    $sig        = hash_hmac('sha256', $b64Header . '.' . $b64Payload, $secret, true);
+    $b64Sig     = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($sig));
+    $jwtToken   = $b64Header . '.' . $b64Payload . '.' . $b64Sig;
+
+    $universityDetails = [
+        'id'      => $admin['university_id'],
+        'name'    => $admin['university_name'],
+        'email'   => $admin['university_email'],
+        'phone'   => $admin['university_phone'],
+        'address' => $admin['university_address']
+    ];
+
+    $adminDetails = [
+        'id'    => $admin['id'],
+        'name'  => $admin['admin_name'],
+        'email' => $admin['email'],
+        'role'  => 'university'
+    ];
+
+    echo json_encode([
+        'success'    => true,
+        'token'      => $jwtToken,
+        'user'       => array_merge($adminDetails, ['university_id' => $admin['university_id']]),
+        'university' => $universityDetails,
+        'admin'      => $adminDetails
+    ]);
+    exit;
+}
+
+// POST /auth/verify-token — verify a JWT and return its payload
+if ($method === 'POST' && $path === '/auth/verify-token') {
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
+    $tokenToVerify = $data['token'] ?? '';
+
+    if (empty($tokenToVerify)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Token is required']);
+        exit;
+    }
+
+    $payload = $auth->verifyToken($tokenToVerify);
+    if (!$payload) {
+        echo json_encode(['valid' => false, 'error' => 'Token is invalid or expired']);
+        exit;
+    }
+
+    echo json_encode([
+        'valid'   => true,
+        'user_id' => $payload['user_id'],
+        'email'   => $payload['email'],
+        'role'    => $payload['role'],
+        'university_id'   => $payload['university_id'] ?? null,
+        'admin_name'      => $payload['admin_name'] ?? null,
+        'university_name' => $payload['university_name'] ?? null,
+        'expires_at'      => $payload['exp']
+    ]);
+    exit;
+}
+
 // ─── Static routes via switch ─────────────────────────────────────────────────
 switch ($path) {
     case '/auth/login':
