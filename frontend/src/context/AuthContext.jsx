@@ -51,8 +51,10 @@ function buildInitialState() {
     id: payload.user_id,
     email: payload.email,
     role: payload.role,
-    // full_name and university_id are not in the JWT payload by default;
-    // they'll be populated after the first successful login
+    university_id: payload.university_id ?? null,
+    // University-admin fields (present in tokens issued by /auth/university/login)
+    admin_name: payload.admin_name ?? null,
+    university_name: payload.university_name ?? null,
   };
   return { user, token, isAuthenticated: true, isLoading: false };
 }
@@ -125,6 +127,19 @@ export function AuthProvider({ children }) {
     dispatch({ type: 'LOGOUT' });
   }, []);
 
+  /**
+   * Accepts a pre-fetched { token, user } object (e.g. from the university login
+   * endpoint) and stores the token in localStorage and updates auth state —
+   * without making a second API call.
+   */
+  const loginWithData = useCallback((tokenData) => {
+    localStorage.setItem(TOKEN_KEY, tokenData.token);
+    dispatch({
+      type: 'LOGIN_SUCCESS',
+      payload: { user: tokenData.user, token: tokenData.token },
+    });
+  }, []);
+
   const register = useCallback(async (data) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
@@ -149,6 +164,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     register,
+    loginWithData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
