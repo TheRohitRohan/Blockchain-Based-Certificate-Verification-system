@@ -426,6 +426,9 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m))
 
 // ─── University Auth routes (university_admins table) ─────────────────────────
 
+const UNIVERSITY_CODE_MAX_LENGTH = 8;
+const DEFAULT_JWT_EXPIRATION_SECONDS = 86400; // 24 hours
+
 // POST /auth/university/register — create a new university + admin account
 if ($method === 'POST' && $path === '/auth/university/register') {
     $data = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -485,7 +488,7 @@ if ($method === 'POST' && $path === '/auth/university/register') {
         $db->beginTransaction();
 
         // Generate a unique university code from the name
-        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($data['university_name'], 0, 8)));
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($data['university_name'], 0, UNIVERSITY_CODE_MAX_LENGTH)));
         $code = $baseCode;
         $suffix = 1;
         while (true) {
@@ -580,7 +583,7 @@ if ($method === 'POST' && $path === '/auth/university/login') {
         'university_id'    => $admin['university_id'],
         'admin_name'       => $admin['admin_name'],
         'university_name'  => $admin['university_name'],
-        'exp'              => time() + (int)($config['jwt']['expiration'] ?: 86400)
+        'exp'              => time() + (int)($config['jwt']['expiration'] ?: DEFAULT_JWT_EXPIRATION_SECONDS)
     ]);
 
     $b64Header  = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));

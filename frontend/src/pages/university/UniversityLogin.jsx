@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router';
 import { useAuthContext } from '../../context/AuthContext';
 import { FormField, Spinner } from '../../components/ui';
-import { ShieldCheck, Mail, Lock, LogIn } from 'lucide-react';
+import { ShieldCheck, LogIn } from 'lucide-react';
 import { universityLogin } from '../../api/auth.api';
 
 export default function UniversityLogin() {
