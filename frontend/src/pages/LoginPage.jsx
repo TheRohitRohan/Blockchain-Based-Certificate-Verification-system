@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router';
+import { useNavigate, Navigate, Link } from 'react-router';
 import { useAuthContext } from '../context/AuthContext';
 import { FormField, Spinner } from '../components/ui';
 import { ShieldCheck, Mail, Lock, LogIn } from 'lucide-react';
@@ -42,7 +42,10 @@ export default function LoginPage() {
 
       <div className="auth-card">
         <p className="auth-title">Sign in</p>
-        <p className="auth-sub">Enter your credentials to access your dashboard.</p>
+        <p className="auth-sub">
+          For <strong>admin</strong> and <strong>student</strong> accounts (stored in the users table). University
+          portal accounts use a separate sign-in.
+        </p>
 
         {error && <div className="auth-error">{error}</div>}
 
@@ -76,7 +79,12 @@ export default function LoginPage() {
         </form>
 
         <p style={{ marginTop: 20, fontSize: '0.72rem', color: 'var(--text3)', textAlign: 'center' }}>
-          Default admin: admin@certificate-system.com / admin123
+          <Link to="/university/login" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+            University staff? Sign in here
+          </Link>
+          <span style={{ display: 'block', marginTop: 10 }}>
+            Default admin: admin@certificate-system.com / admin123
+          </span>
         </p>
       </div>
     </div>

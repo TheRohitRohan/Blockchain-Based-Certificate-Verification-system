@@ -31,7 +31,7 @@ class CertificateService {
             
             // Get student info
             $stmt = $this->db->prepare("
-                SELECT s.id, s.student_id, u.full_name, un.name as university_name, un.code as university_code
+                SELECT s.id, s.student_id, s.university_id, u.full_name, un.name as university_name, un.code as university_code
                 FROM students s 
                 JOIN users u ON s.user_id = u.id 
                 JOIN universities un ON s.university_id = un.id
@@ -42,6 +42,11 @@ class CertificateService {
             
             if (!$student) {
                 throw new \Exception("Student not found");
+            }
+
+            $issuerUniversityId = (int)($data['university_id'] ?? 0);
+            if ($issuerUniversityId < 1 || (int)$student['university_id'] !== $issuerUniversityId) {
+                throw new \Exception('Student does not belong to your university');
             }
             
             // Generate certificate ID

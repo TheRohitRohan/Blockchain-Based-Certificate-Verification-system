@@ -81,6 +81,8 @@ return [
         'default_cert_password' => env('DEFAULT_SIGNING_CERT_PASSWORD'),
         'require_signature' => env('REQUIRE_SIGNATURE'),
         'key_encryption_secret' => env('KEY_ENCRYPTION_SECRET'),
+        // Windows: set to a readable openssl.cnf (e.g. Git: C:\Program Files\Git\usr\ssl\openssl.cnf)
+        'openssl_config' => env('OPENSSL_CONF') ?: env('OPENSSL_CONFIG'),
     ],
     'mail' => [
         'host'       => env('MAIL_HOST', 'smtp.gmail.com'),

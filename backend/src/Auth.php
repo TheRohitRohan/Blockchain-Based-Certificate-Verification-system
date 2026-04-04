@@ -80,6 +80,29 @@ class Auth {
         return $stmt->execute($values);
     }
 
+    /**
+     * Change password for a row in university_admins (dedicated university login).
+     */
+    public function changeUniversityAdminPassword(int $adminId, string $currentPassword, string $newPassword): array {
+        $stmt = $this->db->prepare('SELECT password_hash FROM university_admins WHERE id = ? AND COALESCE(is_active, 1) = 1');
+        $stmt->execute([$adminId]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            return ['success' => false, 'error' => 'User not found'];
+        }
+
+        if (!password_verify($currentPassword, $row['password_hash'])) {
+            return ['success' => false, 'error' => 'Current password is incorrect'];
+        }
+
+        $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $this->db->prepare('UPDATE university_admins SET password_hash = ? WHERE id = ?');
+        $stmt->execute([$newHash, $adminId]);
+
+        return ['success' => true];
+    }
+
     public function changePassword(int $userId, string $currentPassword, string $newPassword): array {
         $stmt = $this->db->prepare("SELECT password_hash FROM users WHERE id = ?");
         $stmt->execute([$userId]);

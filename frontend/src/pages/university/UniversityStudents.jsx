@@ -116,23 +116,30 @@ export default function UniversityStudents() {
           <form onSubmit={handleAdd} className="form-grid">
             <div className="form-grid-2">
               <FormField label="Username" required>
-                <input className="form-input" value={form.username} onChange={set('username')} placeholder="jdoe" />
+                <input className="form-input" value={form.username} onChange={set('username')} placeholder="jdoe" autoComplete="username" />
               </FormField>
               <FormField label="Student ID" required>
-                <input className="form-input" value={form.student_id} onChange={set('student_id')} placeholder="STU001" />
+                <input className="form-input" value={form.student_id} onChange={set('student_id')} placeholder="STU001" autoComplete="off" />
               </FormField>
             </div>
             <FormField label="Full Name" required>
-              <input className="form-input" value={form.full_name} onChange={set('full_name')} placeholder="John Doe" />
+              <input className="form-input" value={form.full_name} onChange={set('full_name')} placeholder="John Doe" autoComplete="name" />
             </FormField>
             <FormField label="Email" required>
-              <input type="email" className="form-input" value={form.email} onChange={set('email')} />
+              <input type="email" className="form-input" value={form.email} onChange={set('email')} autoComplete="email" />
             </FormField>
             <FormField label="Password" required>
-              <input type="password" className="form-input" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" />
+              <input
+                type="password"
+                className="form-input"
+                value={form.password}
+                onChange={set('password')}
+                placeholder="Min. 8 characters, letters + numbers"
+                autoComplete="new-password"
+              />
             </FormField>
             <FormField label="Enrollment Date">
-              <input type="date" className="form-input" value={form.enrollment_date} onChange={set('enrollment_date')} />
+              <input type="date" className="form-input" value={form.enrollment_date} onChange={set('enrollment_date')} autoComplete="off" />
             </FormField>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-ghost-sm" onClick={() => setShowAdd(false)}>Cancel</button>

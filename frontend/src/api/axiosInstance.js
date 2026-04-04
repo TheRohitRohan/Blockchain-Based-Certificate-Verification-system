@@ -17,15 +17,26 @@ const axiosInstance = axios.create({
   timeout: 15000,
 });
 
+/** Paths where we must not send JWT (wrong-password 401 is expected; sending token caused global logout). */
+function isCredentialOrPublicRequest(config) {
+  const key = `${config.baseURL || ''}${config.url || ''}`.toLowerCase();
+  return (
+    key.includes('auth/login') ||
+    key.includes('auth/register') ||
+    key.includes('auth/university/login') ||
+    key.includes('auth/university/register') ||
+    key.includes('auth/forgot-password') ||
+    key.includes('auth/reset-password') ||
+    key.includes('/public/')
+  );
+}
+
 // ── Request interceptor — attach Bearer token ──────────────
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('certiledger_token');
-    if (token) {
+    if (token && !isCredentialOrPublicRequest(config)) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('✓ Bearer token attached to request:', config.url);
-    } else {
-      console.warn('✗ No token found in localStorage for URL:', config.url);
     }
     return config;
   },
@@ -37,9 +48,12 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear persisted credentials and notify AuthContext
-      localStorage.removeItem('certiledger_token');
-      window.dispatchEvent(new CustomEvent('certiledger:logout'));
+      const cfg = error.config;
+      // Wrong password on login/register must not wipe an existing session
+      if (cfg && !isCredentialOrPublicRequest(cfg)) {
+        localStorage.removeItem('certiledger_token');
+        window.dispatchEvent(new CustomEvent('certiledger:logout'));
+      }
     }
     return Promise.reject(error);
   }

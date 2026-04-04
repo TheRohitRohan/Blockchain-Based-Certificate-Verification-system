@@ -512,10 +512,10 @@ if ($method === 'POST' && $path === '/auth/university/register') {
         ]);
         $universityId = (int)$db->lastInsertId();
 
-        // Hash admin password and insert admin
+        // Hash admin password and insert admin (column is password_hash in production)
         $passwordHash = password_hash($data['admin_password'], PASSWORD_DEFAULT);
         $stmt = $db->prepare("
-            INSERT INTO university_admins (university_id, name, email, password)
+            INSERT INTO university_admins (university_id, name, email, password_hash)
             VALUES (?, ?, ?, ?)
         ");
         $stmt->execute([
@@ -556,19 +556,29 @@ if ($method === 'POST' && $path === '/auth/university/login') {
 
     $stmt = $db->prepare("
         SELECT ua.id, ua.university_id, ua.name AS admin_name, ua.email,
-               ua.password, u.name AS university_name, u.contact_email AS university_email,
+               ua.password_hash, u.name AS university_name, u.contact_email AS university_email,
                u.contact_phone AS university_phone, u.address AS university_address
         FROM university_admins ua
         JOIN universities u ON ua.university_id = u.id
-        WHERE ua.email = ? AND u.is_active = TRUE
+        WHERE ua.email = ?
+          AND COALESCE(ua.is_active, 1) = 1
+          AND u.is_active = TRUE
     ");
     $stmt->execute([$email]);
     $admin = $stmt->fetch();
 
-    if (!$admin || !password_verify($password, $admin['password'])) {
+    if (!$admin || !password_verify($password, $admin['password_hash'])) {
         http_response_code(401);
         echo json_encode(['error' => 'Invalid email or password']);
         exit;
+    }
+
+    // Best-effort last login (column exists in production schema)
+    try {
+        $upd = $db->prepare('UPDATE university_admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?');
+        $upd->execute([(int)$admin['id']]);
+    } catch (\Throwable $e) {
+        // Older DBs without last_login: ignore
     }
 
     // Generate JWT compatible with existing frontend AuthContext
@@ -849,7 +859,12 @@ switch ($path) {
 
     case '/certificates/download':
         if ($method === 'GET') {
-            $user = requireAuth($token, $auth);
+            // Student dashboard uses <a target="_blank"> with token in query string (no Authorization header in new tab)
+            $downloadToken = $token;
+            if (!$downloadToken && !empty($_GET['token']) && is_string($_GET['token'])) {
+                $downloadToken = trim($_GET['token']);
+            }
+            $user = requireAuth($downloadToken, $auth);
             $certificateId = $_GET['certificate_id'] ?? '';
             
             if (empty($certificateId)) {
@@ -914,7 +929,19 @@ switch ($path) {
                 $data['contact_email'] ?? null,
                 $data['contact_phone'] ?? null
             ]);
-            echo json_encode(['success' => $result]);
+            if (!$result) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Failed to create university']);
+                break;
+            }
+            $newUniversityId = (int) $db->lastInsertId();
+            $uniName = trim($data['name'] ?? 'University');
+            $keyInfo = $signatureService->generateUniversityKeyPair($newUniversityId, $uniName);
+            echo json_encode([
+                'success' => true,
+                'university_id' => $newUniversityId,
+                'signing_key_generated' => $keyInfo !== null,
+            ]);
         }
         break;
 
@@ -1183,7 +1210,19 @@ switch ($path) {
                 break;
             }
 
-            $result = $auth->changePassword($user['user_id'], $currentPassword, $newPassword);
+            // University JWT may refer to university_admins.id (new) or users.id (legacy)
+            if (($user['role'] ?? '') === 'university') {
+                $dbPw = Database::getInstance()->getConnection();
+                $chk = $dbPw->prepare('SELECT id FROM university_admins WHERE id = ?');
+                $chk->execute([(int)$user['user_id']]);
+                if ($chk->fetch()) {
+                    $result = $auth->changeUniversityAdminPassword((int)$user['user_id'], $currentPassword, $newPassword);
+                } else {
+                    $result = $auth->changePassword((int)$user['user_id'], $currentPassword, $newPassword);
+                }
+            } else {
+                $result = $auth->changePassword((int)$user['user_id'], $currentPassword, $newPassword);
+            }
             if ($result['success']) {
                 echo json_encode(['success' => true, 'message' => 'Password changed successfully']);
             } else {

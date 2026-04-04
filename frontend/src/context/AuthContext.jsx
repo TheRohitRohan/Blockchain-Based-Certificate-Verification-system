@@ -55,6 +55,7 @@ function buildInitialState() {
     // University-admin fields (present in tokens issued by /auth/university/login)
     admin_name: payload.admin_name ?? null,
     university_name: payload.university_name ?? null,
+    full_name: payload.full_name ?? payload.admin_name ?? null,
   };
   return { user, token, isAuthenticated: true, isLoading: false };
 }

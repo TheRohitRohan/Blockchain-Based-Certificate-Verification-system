@@ -1,0 +1,28 @@
+# OpenSSL 3.x (PHP 8.2+ on Windows) needs an explicit default provider.
+# OpenSSL 1.1.x generally ignores unknown top-level sections and still uses [req].
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+alg_section = algorithm_sect
+
+[provider_sect]
+default = default_sect
+
+[default_sect]
+activate = 1
+
+[algorithm_sect]
+default_properties = fips=no
+
+HOME = .
+RANDFILE = NUL
+
+[ req ]
+default_bits = 2048
+default_md = sha256
+distinguished_name = req_distinguished_name
+encrypt_key = no
+
+[ req_distinguished_name ]
+commonName = CertiLedger University Key
