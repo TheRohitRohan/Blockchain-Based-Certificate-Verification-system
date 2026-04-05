@@ -655,21 +655,44 @@ switch ($path) {
     case '/certificates/upload':
         if ($method === 'POST') {
             $user = requireAuth($token, $auth, ['university', 'admin']);
-            
+
             if (!isset($_FILES['certificate']) || $_FILES['certificate']['error'] !== UPLOAD_ERR_OK) {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'error' => 'No file uploaded or upload error']);
                 break;
             }
-            
-            $universityId = $user['university_id'] ?? null;
-            if (!$universityId) {
+
+            // For university role, always use their own university_id from the token.
+            // For admin, university_id must be provided in the form data.
+            $universityId = ($user['role'] === 'university')
+                ? (int)$user['university_id']
+                : (int)($_POST['university_id'] ?? 0);
+
+            if ($universityId < 1) {
                 http_response_code(400);
-                echo json_encode(['success' => false, 'error' => 'University ID required']);
+                echo json_encode(['success' => false, 'error' => 'university_id is required']);
                 break;
             }
-            
-            $result = $certService->uploadCertificate($_FILES['certificate'], $universityId);
+
+            $studentId  = (int)($_POST['student_id'] ?? 0);
+            $courseName = trim($_POST['course_name'] ?? '');
+            $issueDate  = trim($_POST['issue_date'] ?? '');
+
+            if ($studentId < 1 || $courseName === '' || $issueDate === '') {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'student_id, course_name, and issue_date are required']);
+                break;
+            }
+
+            $data = [
+                'student_id'    => $studentId,
+                'university_id' => $universityId,
+                'course_name'   => $courseName,
+                'degree_type'   => trim($_POST['degree_type'] ?? '') ?: null,
+                'issue_date'    => $issueDate,
+            ];
+
+            $result = $certService->uploadCertificate($_FILES['certificate'], $data);
             echo json_encode($result);
         }
         break;
