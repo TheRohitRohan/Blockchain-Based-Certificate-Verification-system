@@ -52,7 +52,6 @@ function buildInitialState() {
     email: payload.email,
     role: payload.role,
     university_id: payload.university_id ?? null,
-    // University-admin fields (present in tokens issued by /auth/university/login)
     admin_name: payload.admin_name ?? null,
     university_name: payload.university_name ?? null,
     full_name: payload.full_name ?? payload.admin_name ?? null,

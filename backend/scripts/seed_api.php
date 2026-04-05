@@ -11,10 +11,7 @@ $dotenv->safeLoad();
 
 echo "=== System Reset & API Seed for Production ===\n\n";
 
-// Auth options for “university” role:
-// • users table + /auth/login — legacy; one user row per operator, role=university, university_id set.
-// • university_admins + /auth/university/login — matches production; dedicated admins, is_active/last_login, etc.
-// This seed creates university_admins rows so the University Sign-in page works out of the box.
+// University portal accounts: users.role = 'university' with university_id (same /auth/login as everyone else).
 
 $db = Database::getInstance()->getConnection();
 
@@ -25,7 +22,11 @@ $db->exec("TRUNCATE TABLE verification_logs");
 $db->exec("TRUNCATE TABLE university_keys");
 $db->exec("TRUNCATE TABLE students");
 $db->exec("DELETE FROM users WHERE role != 'admin'");
-$db->exec("TRUNCATE TABLE university_admins");
+try {
+    $db->exec('TRUNCATE TABLE university_admins');
+} catch (\Throwable $e) {
+    // Dropped by migration 004
+}
 $db->exec("TRUNCATE TABLE universities");
 $db->exec("SET FOREIGN_KEY_CHECKS=1");
 echo "Data wiped successfully.\n\n";
@@ -94,7 +95,7 @@ echo "Admin authenticated via API! Token obtained.\n\n";
 
 echo "Step 3: Creating Universities via API...\n";
 
-// contact_email = university office; admin_email = portal login for /university/login
+// contact_email = university office; admin_email = portal login (users.role = university)
 $defaultAdminPassword = 'UnivAdmin@123';
 $universities = [
     [
@@ -136,20 +137,30 @@ foreach ($universities as $u) {
     $universityIds[] = ['id' => $uId, 'email' => $u['email']];
     echo "- Created University: {$u['name']} (ID: $uId)\n";
 
-    // Dedicated university portal account (university_admins.password_hash)
     $adminEmail = strtolower(trim($u['admin_email']));
     $adminName = $u['admin_name'];
     $pwHash = password_hash($defaultAdminPassword, PASSWORD_DEFAULT);
+    $local = strstr($adminEmail, '@', true) ?: 'univ';
+    $local = preg_replace('/[^a-z0-9_]/', '_', $local);
+    $baseUsername = substr(trim($local, '_') ?: 'univ', 0, 80);
+    $username = $baseUsername;
+    for ($s = 0; ; $s++) {
+        $chk = $db->prepare('SELECT 1 FROM users WHERE username = ?');
+        $chk->execute([$username]);
+        if (!$chk->fetch()) {
+            break;
+        }
+        $username = $baseUsername . '_' . ($s + 1);
+    }
     try {
         $insAdmin = $db->prepare('
-            INSERT INTO university_admins (university_id, name, email, password_hash)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO users (username, email, password_hash, role, full_name, university_id)
+            VALUES (?, ?, ?, \'university\', ?, ?)
         ');
-        $insAdmin->execute([$uId, $adminName, $adminEmail, $pwHash]);
-        echo "  - Portal admin: {$adminEmail} / {$defaultAdminPassword} (use /university/login)\n";
+        $insAdmin->execute([$username, $adminEmail, $pwHash, $adminName, $uId]);
+        echo "  - Portal admin: {$adminEmail} / {$defaultAdminPassword} (use /login)\n";
     } catch (\Throwable $e) {
-        fwrite(STDERR, "\nFATAL: university_admins insert failed for university_id={$uId}: " . $e->getMessage() . "\n");
-        fwrite(STDERR, "Fix the DB (see migration 003) or run: php scripts/backfill_university_admins.php\n\n");
+        fwrite(STDERR, "\nFATAL: university user insert failed for university_id={$uId}: " . $e->getMessage() . "\n\n");
         exit(1);
     }
     

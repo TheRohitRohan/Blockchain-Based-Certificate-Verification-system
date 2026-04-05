@@ -74,7 +74,7 @@ export default function UniversityRegister() {
 
       if (data.success) {
         setSuccess('University registered successfully! Redirecting to login…');
-        setTimeout(() => navigate('/university/login'), 1800);
+        setTimeout(() => navigate('/login'), 1800);
       } else {
         setError(data.error ?? 'Registration failed. Please try again.');
       }
@@ -217,7 +217,7 @@ export default function UniversityRegister() {
 
         <p style={{ marginTop: 20, fontSize: '0.75rem', color: 'var(--text3)', textAlign: 'center' }}>
           Already have an account?{' '}
-          <Link to="/university/login" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+          <Link to="/login" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
             Sign in
           </Link>
         </p>

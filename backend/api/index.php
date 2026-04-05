@@ -149,6 +149,25 @@ function validatePasswordStrength(string $password): ?string {
     return null;
 }
 
+/** Unique username for new users (university self-registration, etc.). */
+function allocateUniqueUsername(\PDO $db, string $email): string {
+    $local = strstr(strtolower(trim($email)), '@', true) ?: 'univ';
+    $local = preg_replace('/[^a-z0-9_]/', '_', $local);
+    $local = trim($local, '_') ?: 'univ';
+    $base = substr($local, 0, 80);
+    $username = $base;
+    $n = 0;
+    while (true) {
+        $chk = $db->prepare('SELECT 1 FROM users WHERE username = ?');
+        $chk->execute([$username]);
+        if (!$chk->fetch()) {
+            return $username;
+        }
+        $n++;
+        $username = $base . '_' . $n;
+    }
+}
+
 // Route handling
 
 // ─── Debug endpoint (shows what headers are received) ─────────────────────
@@ -424,10 +443,9 @@ if ($method === 'GET' && preg_match('#^/universities/(\d+)/stats$#', $path, $m))
     exit;
 }
 
-// ─── University Auth routes (university_admins table) ─────────────────────────
+// ─── University Auth routes (users.role = 'university') ─────────────────────
 
 const UNIVERSITY_CODE_MAX_LENGTH = 8;
-const DEFAULT_JWT_EXPIRATION_SECONDS = 86400; // 24 hours
 
 // POST /auth/university/register — create a new university + admin account
 if ($method === 'POST' && $path === '/auth/university/register') {
@@ -466,9 +484,10 @@ if ($method === 'POST' && $path === '/auth/university/register') {
 
     $db = Database::getInstance()->getConnection();
 
-    // Check for duplicate admin email in university_admins
-    $stmt = $db->prepare("SELECT id FROM university_admins WHERE email = ?");
-    $stmt->execute([strtolower(trim($data['admin_email']))]);
+    $adminEmail = strtolower(trim($data['admin_email']));
+
+    $stmt = $db->prepare('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?');
+    $stmt->execute([$adminEmail]);
     if ($stmt->fetch()) {
         http_response_code(409);
         echo json_encode(['error' => 'An account with this admin email already exists']);
@@ -512,17 +531,18 @@ if ($method === 'POST' && $path === '/auth/university/register') {
         ]);
         $universityId = (int)$db->lastInsertId();
 
-        // Hash admin password and insert admin (column is password_hash in production)
         $passwordHash = password_hash($data['admin_password'], PASSWORD_DEFAULT);
+        $username = allocateUniqueUsername($db, $adminEmail);
         $stmt = $db->prepare("
-            INSERT INTO university_admins (university_id, name, email, password_hash)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO users (username, email, password_hash, role, full_name, university_id)
+            VALUES (?, ?, ?, 'university', ?, ?)
         ");
         $stmt->execute([
-            $universityId,
+            $username,
+            $adminEmail,
+            $passwordHash,
             trim($data['admin_name']),
-            strtolower(trim($data['admin_email'])),
-            $passwordHash
+            $universityId,
         ]);
 
         $db->commit();
@@ -537,93 +557,6 @@ if ($method === 'POST' && $path === '/auth/university/register') {
         http_response_code(500);
         echo json_encode(['error' => 'Registration failed. Please try again.']);
     }
-    exit;
-}
-
-// POST /auth/university/login — university admin login
-if ($method === 'POST' && $path === '/auth/university/login') {
-    $data = json_decode(file_get_contents('php://input'), true) ?? [];
-    $email = strtolower(trim($data['email'] ?? ''));
-    $password = $data['password'] ?? '';
-
-    if (empty($email) || empty($password)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Email and password are required']);
-        exit;
-    }
-
-    $db = Database::getInstance()->getConnection();
-
-    $stmt = $db->prepare("
-        SELECT ua.id, ua.university_id, ua.name AS admin_name, ua.email,
-               ua.password_hash, u.name AS university_name, u.contact_email AS university_email,
-               u.contact_phone AS university_phone, u.address AS university_address
-        FROM university_admins ua
-        JOIN universities u ON ua.university_id = u.id
-        WHERE ua.email = ?
-          AND COALESCE(ua.is_active, 1) = 1
-          AND u.is_active = TRUE
-    ");
-    $stmt->execute([$email]);
-    $admin = $stmt->fetch();
-
-    if (!$admin || !password_verify($password, $admin['password_hash'])) {
-        http_response_code(401);
-        echo json_encode(['error' => 'Invalid email or password']);
-        exit;
-    }
-
-    // Best-effort last login (column exists in production schema)
-    try {
-        $upd = $db->prepare('UPDATE university_admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?');
-        $upd->execute([(int)$admin['id']]);
-    } catch (\Throwable $e) {
-        // Older DBs without last_login: ignore
-    }
-
-    // Generate JWT compatible with existing frontend AuthContext
-    $config = require __DIR__ . '/../config.php';
-    $secret = $config['jwt']['secret'];
-
-    $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
-    $payload = json_encode([
-        'user_id'          => $admin['id'],
-        'email'            => $admin['email'],
-        'role'             => 'university',
-        'university_id'    => $admin['university_id'],
-        'admin_name'       => $admin['admin_name'],
-        'university_name'  => $admin['university_name'],
-        'exp'              => time() + (int)($config['jwt']['expiration'] ?: DEFAULT_JWT_EXPIRATION_SECONDS)
-    ]);
-
-    $b64Header  = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
-    $b64Payload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));
-    $sig        = hash_hmac('sha256', $b64Header . '.' . $b64Payload, $secret, true);
-    $b64Sig     = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($sig));
-    $jwtToken   = $b64Header . '.' . $b64Payload . '.' . $b64Sig;
-
-    $universityDetails = [
-        'id'      => $admin['university_id'],
-        'name'    => $admin['university_name'],
-        'email'   => $admin['university_email'],
-        'phone'   => $admin['university_phone'],
-        'address' => $admin['university_address']
-    ];
-
-    $adminDetails = [
-        'id'    => $admin['id'],
-        'name'  => $admin['admin_name'],
-        'email' => $admin['email'],
-        'role'  => 'university'
-    ];
-
-    echo json_encode([
-        'success'    => true,
-        'token'      => $jwtToken,
-        'user'       => array_merge($adminDetails, ['university_id' => $admin['university_id']]),
-        'university' => $universityDetails,
-        'admin'      => $adminDetails
-    ]);
     exit;
 }
 
@@ -666,7 +599,27 @@ switch ($path) {
             
             if ($user) {
                 $token = $auth->generateToken($user);
-                echo json_encode(['success' => true, 'token' => $token, 'user' => $user]);
+                $response = ['success' => true, 'token' => $token, 'user' => $user];
+                
+                // If user is university role, include university and admin details
+                if (($user['role'] ?? '') === 'university') {
+                    $response['university'] = [
+                        'id'      => (int) $user['university_id'],
+                        'name'    => $user['university_name'] ?? null,
+                        'email'   => $user['university_contact_email'] ?? null,
+                        'phone'   => $user['university_contact_phone'] ?? null,
+                        'address' => $user['university_address'] ?? null,
+                    ];
+                    
+                    $response['admin'] = [
+                        'id'    => (int) $user['id'],
+                        'name'  => $user['full_name'],
+                        'email' => $user['email'],
+                        'role'  => 'university',
+                    ];
+                }
+                
+                echo json_encode($response);
             } else {
                 http_response_code(401);
                 echo json_encode(['error' => 'Invalid credentials']);
@@ -1210,19 +1163,7 @@ switch ($path) {
                 break;
             }
 
-            // University JWT may refer to university_admins.id (new) or users.id (legacy)
-            if (($user['role'] ?? '') === 'university') {
-                $dbPw = Database::getInstance()->getConnection();
-                $chk = $dbPw->prepare('SELECT id FROM university_admins WHERE id = ?');
-                $chk->execute([(int)$user['user_id']]);
-                if ($chk->fetch()) {
-                    $result = $auth->changeUniversityAdminPassword((int)$user['user_id'], $currentPassword, $newPassword);
-                } else {
-                    $result = $auth->changePassword((int)$user['user_id'], $currentPassword, $newPassword);
-                }
-            } else {
-                $result = $auth->changePassword((int)$user['user_id'], $currentPassword, $newPassword);
-            }
+            $result = $auth->changePassword((int) $user['user_id'], $currentPassword, $newPassword);
             if ($result['success']) {
                 echo json_encode(['success' => true, 'message' => 'Password changed successfully']);
             } else {

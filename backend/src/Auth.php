@@ -13,16 +13,46 @@ class Auth {
     }
 
     public function login($email, $password) {
-        $stmt = $this->db->prepare("SELECT id, username, email, password_hash, role, full_name, university_id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch();
-
-        if ($user && password_verify($password, $user['password_hash'])) {
-            unset($user['password_hash']);
-            return $user;
+        $emailNorm = strtolower(trim((string) $email));
+        if ($emailNorm === '') {
+            return null;
         }
 
-        return null;
+        $stmt = $this->db->prepare("
+            SELECT u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.university_id,
+                   uni.name AS university_name,
+                   uni.is_active AS university_is_active,
+                   uni.contact_email AS university_contact_email,
+                   uni.contact_phone AS university_contact_phone,
+                   uni.address AS university_address
+            FROM users u
+            LEFT JOIN universities uni ON u.university_id = uni.id
+            WHERE LOWER(TRIM(u.email)) = ?
+        ");
+        $stmt->execute([$emailNorm]);
+        $user = $stmt->fetch();
+
+        if (!$user || !password_verify($password, $user['password_hash'])) {
+            return null;
+        }
+
+        if (($user['role'] ?? '') === 'university') {
+            if (empty($user['university_id']) || $user['university_name'] === null || $user['university_name'] === '') {
+                return null;
+            }
+            $active = $user['university_is_active'];
+            if ($active !== null && (int) $active !== 1) {
+                return null;
+            }
+        }
+
+        unset($user['password_hash'], $user['university_is_active']);
+
+        if (($user['role'] ?? '') === 'university') {
+            $user['admin_name'] = $user['full_name'] ?? null;
+        }
+
+        return $user;
     }
 
     public function register($data) {
@@ -78,29 +108,6 @@ class Auth {
         $values[] = $userId;
         $stmt = $this->db->prepare("UPDATE users SET " . implode(', ', $fields) . " WHERE id = ?");
         return $stmt->execute($values);
-    }
-
-    /**
-     * Change password for a row in university_admins (dedicated university login).
-     */
-    public function changeUniversityAdminPassword(int $adminId, string $currentPassword, string $newPassword): array {
-        $stmt = $this->db->prepare('SELECT password_hash FROM university_admins WHERE id = ? AND COALESCE(is_active, 1) = 1');
-        $stmt->execute([$adminId]);
-        $row = $stmt->fetch();
-
-        if (!$row) {
-            return ['success' => false, 'error' => 'User not found'];
-        }
-
-        if (!password_verify($currentPassword, $row['password_hash'])) {
-            return ['success' => false, 'error' => 'Current password is incorrect'];
-        }
-
-        $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
-        $stmt = $this->db->prepare('UPDATE university_admins SET password_hash = ? WHERE id = ?');
-        $stmt->execute([$newHash, $adminId]);
-
-        return ['success' => true];
     }
 
     public function changePassword(int $userId, string $currentPassword, string $newPassword): array {
@@ -187,13 +194,20 @@ class Auth {
         $secret = $config['jwt']['secret'];
         
         $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
-        $payload = json_encode([
+        $payloadData = [
             'user_id'       => $user['id'],
             'email'         => $user['email'],
             'role'          => $user['role'],
             'university_id' => $user['university_id'] ?? null,
-            'exp'           => time() + $config['jwt']['expiration']
-        ]);
+            'full_name'     => $user['full_name'] ?? null,
+            'exp'           => time() + $config['jwt']['expiration'],
+        ];
+        if (($user['role'] ?? '') === 'university') {
+            $payloadData['admin_name'] = $user['full_name'] ?? null;
+            $payloadData['university_name'] = $user['university_name'] ?? null;
+        }
+
+        $payload = json_encode($payloadData);
 
         $base64Header = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
         $base64Payload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));

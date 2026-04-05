@@ -1,9 +1,9 @@
 <?php
 /**
- * Backfill university_admins for every university that has no portal admin yet.
+ * Backfill users (role = university) for every active university that has none yet.
  *
- * Uses the same DB as backend/.env (production or local). Safe to re-run: skips
- * universities that already have at least one row in university_admins.
+ * Uses the same DB as backend/.env. Safe to re-run: skips universities that already
+ * have at least one user with role university and matching university_id.
  *
  * Usage (from backend/):
  *   php scripts/backfill_university_admins.php
@@ -12,7 +12,6 @@
  *   UNIVERSITY_ADMIN_DEFAULT_PASSWORD=YourSecurePass1
  *
  * Login emails are deterministic: admin.uni.{university_id}@portal.local
- * (unique, avoids clashing with real inboxes).
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -24,7 +23,7 @@ $dotenv->safeLoad();
 
 $defaultPassword = getenv('UNIVERSITY_ADMIN_DEFAULT_PASSWORD') ?: 'UnivAdmin@123';
 
-echo "=== Backfill university_admins ===\n\n";
+echo "=== Backfill university portal users (users.role = university) ===\n\n";
 
 $db = Database::getInstance()->getConnection();
 
@@ -33,34 +32,35 @@ $uniStmt = $db->query('
     FROM universities u
     WHERE u.is_active = TRUE
       AND NOT EXISTS (
-          SELECT 1 FROM university_admins ua WHERE ua.university_id = u.id
+          SELECT 1 FROM users usr
+          WHERE usr.university_id = u.id AND usr.role = \'university\'
       )
     ORDER BY u.id
 ');
 $missing = $uniStmt->fetchAll(PDO::FETCH_ASSOC);
 
 if (empty($missing)) {
-    echo "Nothing to do: every active university already has at least one admin in university_admins.\n";
+    echo "Nothing to do: every active university already has at least one university-role user.\n";
     exit(0);
 }
 
 $hash = password_hash($defaultPassword, PASSWORD_DEFAULT);
 $insert = $db->prepare('
-    INSERT INTO university_admins (university_id, name, email, password_hash)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO users (username, email, password_hash, role, full_name, university_id)
+    VALUES (?, ?, ?, \'university\', ?, ?)
 ');
 
-echo "Creating " . count($missing) . " portal account(s). Default password for all: {$defaultPassword}\n\n";
+echo 'Creating ' . count($missing) . " portal account(s). Default password for all: {$defaultPassword}\n\n";
 
 foreach ($missing as $row) {
     $id = (int) $row['id'];
     $name = trim((string) $row['name']);
-    $code = preg_replace('/[^A-Za-z0-9]/', '', (string) ($row['code'] ?? ''));
     $adminName = $name !== '' ? "{$name} Portal Admin" : "University #{$id} Portal Admin";
     $email = 'admin.uni.' . $id . '@portal.local';
+    $username = 'portal_uni_' . $id;
 
     try {
-        $insert->execute([$id, $adminName, $email, $hash]);
+        $insert->execute([$username, $email, $hash, $adminName, $id]);
         echo "- University ID {$id} ({$name}) → {$email}\n";
     } catch (Throwable $e) {
         fwrite(STDERR, "FAILED university_id={$id}: " . $e->getMessage() . "\n");
@@ -68,5 +68,5 @@ foreach ($missing as $row) {
     }
 }
 
-echo "\nDone. Sign in at /university/login with any email above.\n";
+echo "\nDone. Sign in at /login with any email above.\n";
 echo "Change passwords after first login.\n";

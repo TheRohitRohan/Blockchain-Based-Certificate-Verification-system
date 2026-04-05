@@ -8,10 +8,11 @@ import axiosInstance from './axiosInstance';
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Authenticate a user.
+ * Authenticate a user (works for all roles: admin, university, student).
+ * For university role users, response also includes university and admin detail objects.
  * @param {string} email
  * @param {string} password
- * @returns {{ success: boolean, token: string, user: object }}
+ * @returns {{ success: boolean, token: string, user: object, university?: object, admin?: object }}
  */
 export async function login(email, password) {
   const res = await axiosInstance.post('/auth/login', { email, password });
@@ -29,23 +30,11 @@ export async function register(data) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  University Auth API  (uses university_admins table)
+//  University management
 //
-//  universityLogin(email, password)  → POST /auth/university/login
-//  universityRegister(data)          → POST /auth/university/register
-//  verifyToken(token)                → POST /auth/verify-token
+//  universityRegister(data)  → POST /auth/university/register
+//  verifyToken(token)        → POST /auth/verify-token
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Authenticate a university admin.
- * @param {string} email
- * @param {string} password
- * @returns {{ success: boolean, token: string, user: object, university: object, admin: object }}
- */
-export async function universityLogin(email, password) {
-  const res = await axiosInstance.post('/auth/university/login', { email, password });
-  return res.data;
-}
 
 /**
  * Register a new university with an admin account.

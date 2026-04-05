@@ -366,7 +366,7 @@ paths:
       tags:
         - Authentication
       summary: User login
-      description: Authenticate user and return JWT token
+      description: Authenticate user and return JWT token. If user has role='university', response includes additional university and admin details.
       requestBody:
         required: true
         content:
@@ -391,7 +391,45 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    $ref: '#/components/schemas/User'
+                  university:
+                    type: object
+                    nullable: true
+                    description: "Present only if user role is 'university'"
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                      address:
+                        type: string
+                  admin:
+                    type: object
+                    nullable: true
+                    description: "Present only if user role is 'university'"
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        example: university
         '401':
           description: Invalid credentials
           content:
@@ -704,6 +742,124 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/university/register:
+    post:
+      tags:
+        - Authentication
+      summary: University portal registration
+      description: Create a new university and register its admin account in one call
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - university_name
+                - university_code
+                - university_email
+                - university_phone
+                - university_address
+                - admin_name
+                - admin_email
+                - admin_password
+              properties:
+                university_name:
+                  type: string
+                  example: Massachusetts Institute of Technology
+                university_code:
+                  type: string
+                  example: MIT
+                university_email:
+                  type: string
+                  format: email
+                  example: admin@mit.edu
+                university_phone:
+                  type: string
+                  example: "+1-617-253-1000"
+                university_address:
+                  type: string
+                  example: Cambridge, MA
+                admin_name:
+                  type: string
+                  example: MIT Admin
+                admin_email:
+                  type: string
+                  format: email
+                  example: portal@mit.edu
+                admin_password:
+                  type: string
+                  format: password
+                  example: SecurePass123!
+      responses:
+        '200':
+          description: University and admin created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Validation error or university already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/verify-token:
+    post:
+      tags:
+        - Authentication
+      summary: Verify JWT token
+      description: Verify and decode a JWT token without requiring authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  valid:
+                    type: boolean
+                    example: true
+                  payload:
+                    type: object
+                    properties:
+                      user_id:
+                        type: integer
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        enum: [admin, university, student]
+                      iat:
+                        type: integer
+                        description: Issued at timestamp
+                      exp:
+                        type: integer
+                        description: Expiration timestamp
+        '400':
+          description: Invalid or malformed token
           content:
             application/json:
               schema:
@@ -1448,45 +1604,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /universities/generate-key:
-    post:
-      tags:
-        - Universities
-      summary: Generate university key pair
-      description: Generate cryptographic key pair for a university (admin only)
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - university_id
-              properties:
-                university_id:
-                  type: integer
-      responses:
-        '200':
-          description: Key pair generated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-        '404':
-          description: University not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
           content:

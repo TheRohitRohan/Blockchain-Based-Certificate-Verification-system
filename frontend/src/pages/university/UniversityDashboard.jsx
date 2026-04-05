@@ -23,7 +23,6 @@ export default function UniversityDashboard() {
     .sort((a, b) => new Date(b.issue_date) - new Date(a.issue_date))
     .slice(0, 5);
 
-  // Support both old (users table) and new (university_admins table) auth
   const adminDisplayName = user?.admin_name ?? user?.full_name ?? user?.email;
   const universityDisplayName = user?.university_name;
 

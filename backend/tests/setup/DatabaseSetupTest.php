@@ -83,13 +83,20 @@ class DatabaseSetupTest extends TestCase
     {
         // Find any user assigned to this university id
         $stmt = self::$db->prepare(
-            "SELECT id, username, email, role 
-             FROM users 
-             WHERE university_id = ? OR role = 'university' 
+            "SELECT id, username, email, role, full_name, university_id
+             FROM users
+             WHERE role = 'university' AND university_id = ?
              LIMIT 1"
         );
         $stmt->execute([TestState::$universityId]);
         $userObj = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$userObj) {
+            $stmt = self::$db->query(
+                "SELECT id, username, email, role, full_name, university_id
+                 FROM users WHERE role = 'university' LIMIT 1"
+            );
+            $userObj = $stmt->fetch(\PDO::FETCH_ASSOC);
+        }
         
         $this->assertNotFalse($userObj, "No university user found for university ID " . TestState::$universityId);
 
