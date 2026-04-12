@@ -58,7 +58,7 @@ export default function Stats() {
   const [ref, triggered] = useScrollReveal();
 
   return (
-    <section id='stats' ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '6rem 2rem' }}>
+    <section ref={ref} style={{ borderTop: '1px solid var(--border)', padding: '6rem 2rem' }}>
       <div className="max-w-7xl mx-auto">
         {/* Label */}
         <p className="label sr" style={{ marginBottom: '3.5rem' }}>By the numbers</p>

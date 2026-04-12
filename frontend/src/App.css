@@ -562,6 +562,7 @@
 }
 .result-banner.valid    { background: color-mix(in srgb, var(--green) 8%, transparent); color: var(--green); }
 .result-banner.revoked  { background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); }
+.result-banner.invalid  { background: color-mix(in srgb, var(--yellow) 8%, transparent); color: var(--yellow); }
 .result-banner.not_found { background: color-mix(in srgb, var(--yellow) 8%, transparent); color: var(--yellow); }
 
 .result-details { padding: 16px; }
@@ -646,6 +647,81 @@
   background: var(--surface2); padding: 6px 12px; border-radius: 4px;
   display: inline-block;
 }
+
+/* ── Issue certificate — long-running blockchain overlay ─────── */
+.issue-cert-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(8px);
+}
+.issue-cert-progress-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+  padding: 28px 26px 22px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 20px 56px color-mix(in srgb, #000 22%, transparent);
+  animation: modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.issue-cert-progress-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.issue-cert-progress-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin: 0 0 10px;
+}
+.issue-cert-progress-lead {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text2);
+  text-align: center;
+  margin: 0 0 18px;
+}
+.issue-cert-progress-steps {
+  list-style: none;
+  margin: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.issue-cert-progress-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text2);
+}
+.issue-cert-step-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+  animation: spin 1.1s linear infinite;
+}
+.issue-cert-progress-foot {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text3);
+  text-align: center;
+}
+
 .share-link-row {
   display: flex; gap: 8px; align-items: center;
 }

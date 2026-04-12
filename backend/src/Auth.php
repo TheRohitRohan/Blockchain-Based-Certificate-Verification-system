@@ -6,22 +6,53 @@ use PDO;
 
 class Auth {
     private $db;
+    private const PASSWORD_RESET_TOKEN_LIFETIME = 15 * 60; // 15 minutes in seconds
 
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
 
     public function login($email, $password) {
-        $stmt = $this->db->prepare("SELECT id, username, email, password_hash, role, full_name, university_id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch();
-
-        if ($user && password_verify($password, $user['password_hash'])) {
-            unset($user['password_hash']);
-            return $user;
+        $emailNorm = strtolower(trim((string) $email));
+        if ($emailNorm === '') {
+            return null;
         }
 
-        return null;
+        $stmt = $this->db->prepare("
+            SELECT u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.university_id,
+                   uni.name AS university_name,
+                   uni.is_active AS university_is_active,
+                   uni.contact_email AS university_contact_email,
+                   uni.contact_phone AS university_contact_phone,
+                   uni.address AS university_address
+            FROM users u
+            LEFT JOIN universities uni ON u.university_id = uni.id
+            WHERE LOWER(TRIM(u.email)) = ?
+        ");
+        $stmt->execute([$emailNorm]);
+        $user = $stmt->fetch();
+
+        if (!$user || !password_verify($password, $user['password_hash'])) {
+            return null;
+        }
+
+        if (($user['role'] ?? '') === 'university') {
+            if (empty($user['university_id']) || $user['university_name'] === null || $user['university_name'] === '') {
+                return null;
+            }
+            $active = $user['university_is_active'];
+            if ($active !== null && (int) $active !== 1) {
+                return null;
+            }
+        }
+
+        unset($user['password_hash'], $user['university_is_active']);
+
+        if (($user['role'] ?? '') === 'university') {
+            $user['admin_name'] = $user['full_name'] ?? null;
+        }
+
+        return $user;
     }
 
     public function register($data) {
@@ -43,9 +74,119 @@ class Auth {
     }
 
     public function getUserById($id) {
-        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, university_id FROM users WHERE id = ?");
+        $stmt = $this->db->prepare("SELECT id, username, email, role, full_name, avatar_path, university_id FROM users WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch();
+    }
+
+    public function updateProfile(int $userId, array $data): bool {
+        $allowed = ['username', 'full_name'];
+        $fields = [];
+        $values = [];
+
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $data)) {
+                $value = trim((string)$data[$field]);
+                if ($value === '') {
+                    continue;
+                }
+                if ($field === 'username' && strlen($value) > 100) {
+                    continue;
+                }
+                if ($field === 'full_name' && strlen($value) > 255) {
+                    continue;
+                }
+                $fields[] = "$field = ?";
+                $values[] = $value;
+            }
+        }
+
+        if (empty($fields)) {
+            return false;
+        }
+
+        $values[] = $userId;
+        $stmt = $this->db->prepare("UPDATE users SET " . implode(', ', $fields) . " WHERE id = ?");
+        return $stmt->execute($values);
+    }
+
+    public function changePassword(int $userId, string $currentPassword, string $newPassword): array {
+        $stmt = $this->db->prepare("SELECT password_hash FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            return ['success' => false, 'error' => 'User not found'];
+        }
+
+        if (!password_verify($currentPassword, $user['password_hash'])) {
+            return ['success' => false, 'error' => 'Current password is incorrect'];
+        }
+
+        $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $this->db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        $stmt->execute([$newHash, $userId]);
+
+        return ['success' => true];
+    }
+
+    public function createPasswordResetToken(string $email): ?array {
+        $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            // Non-enumeration: return null to indicate no user found (caller still returns success)
+            return null;
+        }
+
+        // Delete any existing tokens for this user
+        $stmt = $this->db->prepare("DELETE FROM password_resets WHERE user_id = ?");
+        $stmt->execute([$user['id']]);
+
+        $rawToken = bin2hex(random_bytes(32));
+        $hashedToken = hash('sha256', $rawToken);
+        $expiresAt = time() + self::PASSWORD_RESET_TOKEN_LIFETIME;
+
+        $stmt = $this->db->prepare("INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)");
+        $stmt->execute([$user['id'], $hashedToken, date('Y-m-d H:i:s', $expiresAt)]);
+
+        return ['token' => $rawToken, 'expires_at' => $expiresAt, 'email' => $email];
+    }
+
+    public function resetPassword(string $token, string $newPassword): array {
+        $hashedToken = hash('sha256', $token);
+        $stmt = $this->db->prepare("
+            SELECT pr.user_id, pr.expires_at
+            FROM password_resets pr
+            WHERE pr.token = ?
+        ");
+        $stmt->execute([$hashedToken]);
+        $reset = $stmt->fetch();
+
+        if (!$reset) {
+            return ['success' => false, 'error' => 'Invalid or expired reset token'];
+        }
+
+        if (strtotime($reset['expires_at']) < time()) {
+            $stmt = $this->db->prepare("DELETE FROM password_resets WHERE token = ?");
+            $stmt->execute([$hashedToken]);
+            return ['success' => false, 'error' => 'Reset token has expired'];
+        }
+
+        $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $this->db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        $stmt->execute([$newHash, $reset['user_id']]);
+
+        $stmt = $this->db->prepare("DELETE FROM password_resets WHERE token = ?");
+        $stmt->execute([$hashedToken]);
+
+        return ['success' => true];
+    }
+
+    public function updateAvatar(int $userId, string $avatarPath): bool {
+        $stmt = $this->db->prepare("UPDATE users SET avatar_path = ? WHERE id = ?");
+        return $stmt->execute([$avatarPath, $userId]);
     }
 
     public function generateToken($user) {
@@ -53,12 +194,20 @@ class Auth {
         $secret = $config['jwt']['secret'];
         
         $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
-        $payload = json_encode([
-            'user_id' => $user['id'],
-            'email' => $user['email'],
-            'role' => $user['role'],
-            'exp' => time() + $config['jwt']['expiration']
-        ]);
+        $payloadData = [
+            'user_id'       => $user['id'],
+            'email'         => $user['email'],
+            'role'          => $user['role'],
+            'university_id' => $user['university_id'] ?? null,
+            'full_name'     => $user['full_name'] ?? null,
+            'exp'           => time() + $config['jwt']['expiration'],
+        ];
+        if (($user['role'] ?? '') === 'university') {
+            $payloadData['admin_name'] = $user['full_name'] ?? null;
+            $payloadData['university_name'] = $user['university_name'] ?? null;
+        }
+
+        $payload = json_encode($payloadData);
 
         $base64Header = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
         $base64Payload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));

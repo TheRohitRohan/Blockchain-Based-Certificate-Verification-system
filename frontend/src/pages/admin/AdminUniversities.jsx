@@ -9,8 +9,44 @@ import { Pencil, Trash2, Plus } from 'lucide-react';
 
 const EMPTY_FORM = { name: '', code: '', address: '', contact_email: '', contact_phone: '' };
 
+/**
+ * Must be defined outside AdminUniversities — an inner component is recreated every render,
+ * so React remounts inputs on each keystroke and focus / typing breaks.
+ */
+function AdminUniversityForm({ form, fieldChange, onSubmit, onCancel, saving }) {
+  return (
+    <form onSubmit={onSubmit} className="form-grid">
+      <div className="form-grid-2">
+        <FormField label="Name" required>
+          <input className="form-input" value={form.name} onChange={fieldChange('name')} placeholder="Tech University" />
+        </FormField>
+        <FormField label="Code" required>
+          <input className="form-input" value={form.code} onChange={fieldChange('code')} placeholder="TECH001" />
+        </FormField>
+      </div>
+      <FormField label="Address">
+        <textarea className="form-textarea" value={form.address} onChange={fieldChange('address')} placeholder="123 Main St…" />
+      </FormField>
+      <div className="form-grid-2">
+        <FormField label="Contact Email">
+          <input type="email" className="form-input" value={form.contact_email} onChange={fieldChange('contact_email')} />
+        </FormField>
+        <FormField label="Contact Phone">
+          <input className="form-input" value={form.contact_phone} onChange={fieldChange('contact_phone')} />
+        </FormField>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+        <button type="button" className="btn-ghost-sm" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="btn-primary-sm" disabled={saving}>
+          {saving ? <Spinner size={12} /> : null} Save
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminUniversities() {
-  const { universities, fetchUniversities, addUniversity, isLoading } = useDataContext();
+  const { universities = [], fetchUniversities, addUniversity, isLoading, error: dataError } = useDataContext();
 
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState(null);   // university object
@@ -34,8 +70,14 @@ export default function AdminUniversities() {
     setSaving(true);
     const res = await addUniversity(form);
     setSaving(false);
-    if (res.success) { toast.success('University added'); setShowAdd(false); }
-    else toast.error(res.error ?? 'Failed to add university');
+    if (res.success) {
+      if (res.signing_key_generated === false) {
+        toast.success('University added, but signing key generation failed. Fix OpenSSL (OPENSSL_CONF in .env) and run Generate key, or certificates will be unsigned.');
+      } else {
+        toast.success('University added. Signing key created — new certificates can be signed.');
+      }
+      setShowAdd(false);
+    } else toast.error(res.error ?? 'Failed to add university');
   }
 
   async function handleEdit(e) {
@@ -60,35 +102,20 @@ export default function AdminUniversities() {
 
   if (isLoading && universities.length === 0) return <PageSpinner />;
 
-  const UniversityForm = ({ onSubmit }) => (
-    <form onSubmit={onSubmit} className="form-grid">
-      <div className="form-grid-2">
-        <FormField label="Name" required>
-          <input className="form-input" value={form.name} onChange={set('name')} placeholder="Tech University" />
-        </FormField>
-        <FormField label="Code" required>
-          <input className="form-input" value={form.code} onChange={set('code')} placeholder="TECH001" />
-        </FormField>
+  if (dataError && universities.length === 0) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <p className="page-title">Universities</p>
+          </div>
+        </div>
+        <div style={{ padding: '20px', color: 'var(--red)', textAlign: 'center' }}>
+          Failed to load universities: {dataError}
+        </div>
       </div>
-      <FormField label="Address">
-        <textarea className="form-textarea" value={form.address} onChange={set('address')} placeholder="123 Main St…" />
-      </FormField>
-      <div className="form-grid-2">
-        <FormField label="Contact Email">
-          <input type="email" className="form-input" value={form.contact_email} onChange={set('contact_email')} />
-        </FormField>
-        <FormField label="Contact Phone">
-          <input className="form-input" value={form.contact_phone} onChange={set('contact_phone')} />
-        </FormField>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-        <button type="button" className="btn-ghost-sm" onClick={() => { setShowAdd(false); setEditTarget(null); }}>Cancel</button>
-        <button type="submit" className="btn-primary-sm" disabled={saving}>
-          {saving ? <Spinner size={12} /> : null} Save
-        </button>
-      </div>
-    </form>
-  );
+    );
+  }
 
   return (
     <div>
@@ -133,13 +160,25 @@ export default function AdminUniversities() {
 
       {showAdd && (
         <Modal title="Add University" onClose={() => setShowAdd(false)}>
-          <UniversityForm onSubmit={handleAdd} />
+          <AdminUniversityForm
+            form={form}
+            fieldChange={set}
+            onSubmit={handleAdd}
+            onCancel={() => setShowAdd(false)}
+            saving={saving}
+          />
         </Modal>
       )}
 
       {editTarget && (
         <Modal title="Edit University" onClose={() => setEditTarget(null)}>
-          <UniversityForm onSubmit={handleEdit} />
+          <AdminUniversityForm
+            form={form}
+            fieldChange={set}
+            onSubmit={handleEdit}
+            onCancel={() => setEditTarget(null)}
+            saving={saving}
+          />
         </Modal>
       )}
 

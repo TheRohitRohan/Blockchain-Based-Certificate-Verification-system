@@ -169,91 +169,143 @@ class SignatureService
      */
     public function generateUniversityKeyPair(int $universityId, string $universityName): ?array
     {
+        $cnfPath = $this->resolveOpenSslConfigPath();
+        $ossl    = $cnfPath !== null ? ['config' => $cnfPath] : [];
+        // Windows PHP often ignores the `config` array and only honours OPENSSL_CONF.
+        $prevOpenSslConf = getenv('OPENSSL_CONF');
+        if ($cnfPath !== null) {
+            putenv('OPENSSL_CONF=' . $cnfPath);
+        }
+
         try {
-            $certsDir = __DIR__ . '/../certs/';
-            if (!is_dir($certsDir)) {
-                mkdir($certsDir, 0700, true);
+            try {
+                $certsDir = __DIR__ . '/../certs/';
+                if (!is_dir($certsDir)) {
+                    mkdir($certsDir, 0700, true);
+                }
+
+                // Generate 2048-bit RSA key pair
+                $keyResource = openssl_pkey_new(array_merge([
+                    'digest_alg'       => 'sha256',
+                    'private_key_bits' => 2048,
+                    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+                ], $ossl));
+                if (!$keyResource) {
+                    $err = '';
+                    while (($msg = openssl_error_string()) !== false) {
+                        $err .= $msg . '; ';
+                    }
+                    throw new \Exception('Failed to generate key: ' . ($err !== '' ? $err : 'unknown OpenSSL error'));
+                }
+
+                // Export private key (PEM)
+                $privateKeyPem = '';
+                openssl_pkey_export($keyResource, $privateKeyPem, null, $ossl);
+
+                // Generate self-signed certificate
+                $dn = [
+                    'commonName'       => $universityName,
+                    'organizationName' => 'Certificate Verification System',
+                    'countryName'      => 'IN',
+                ];
+                $csr  = openssl_csr_new($dn, $keyResource, array_merge(['digest_alg' => 'sha256'], $ossl));
+                $cert = openssl_csr_sign($csr, null, $keyResource, 3650, array_merge(['digest_alg' => 'sha256'], $ossl));
+
+                // Export certificate (PEM)
+                $certPem = '';
+                openssl_x509_export($cert, $certPem);
+
+                // Get public key details for fingerprint
+                $pubKeyDetails = openssl_pkey_get_details($keyResource);
+                $publicKeyPem  = $pubKeyDetails['key'];
+                $fingerprint   = hash('sha256', $publicKeyPem);
+
+                // Save to files
+                $keyPath  = $certsDir . "university_{$universityId}.key.pem";
+                $certPath = $certsDir . "university_{$universityId}.cert.pem";
+                file_put_contents($keyPath, $privateKeyPem);
+                file_put_contents($certPath, $certPem);
+                chmod($keyPath, 0600); // private key readable only by web server user
+
+                $encryptedKey = $this->encryptPrivateKey($privateKeyPem);
+
+                $stmt = $this->db->prepare("
+                    INSERT INTO university_keys
+                        (university_id, certificate_path, certificate_password, public_key_pem, key_fingerprint, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                    ON DUPLICATE KEY UPDATE
+                        certificate_path = VALUES(certificate_path),
+                        certificate_password = VALUES(certificate_password),
+                        public_key_pem = VALUES(public_key_pem),
+                        key_fingerprint = VALUES(key_fingerprint),
+                        is_active = 1,
+                        updated_at = NOW()
+                ");
+                $stmt->execute([
+                    $universityId,
+                    $certPath,
+                    $encryptedKey,
+                    $publicKeyPem,
+                    $fingerprint,
+                ]);
+
+                return [
+                    'fingerprint'    => $fingerprint,
+                    'key_path'       => $keyPath,
+                    'cert_path'      => $certPath,
+                    'public_key_pem' => $publicKeyPem,
+                ];
+            } catch (\Exception $e) {
+                error_log('Key generation failed: ' . $e->getMessage());
+                return null;
             }
-
-            // Generate 2048-bit RSA key pair
-            $keyResource = openssl_pkey_new([
-                'digest_alg'       => 'sha256',
-                'private_key_bits' => 2048,
-                'private_key_type' => OPENSSL_KEYTYPE_RSA,
-            ]);
-            if (!$keyResource) {
-                throw new \Exception("Failed to generate key: " . openssl_error_string());
+        } finally {
+            if ($cnfPath !== null) {
+                if ($prevOpenSslConf === false || $prevOpenSslConf === '') {
+                    putenv('OPENSSL_CONF');
+                } else {
+                    putenv('OPENSSL_CONF=' . $prevOpenSslConf);
+                }
             }
-
-            // Export private key (PEM)
-            $privateKeyPem = '';
-            openssl_pkey_export($keyResource, $privateKeyPem);
-
-            // Generate self-signed certificate
-            $dn = [
-                'commonName'           => $universityName,
-                'organizationName'     => 'Certificate Verification System',
-                'countryName'          => 'IN',
-            ];
-            $csr  = openssl_csr_new($dn, $keyResource, ['digest_alg' => 'sha256']);
-            $cert = openssl_csr_sign($csr, null, $keyResource, 3650, ['digest_alg' => 'sha256']);
-
-            // Export certificate (PEM)
-            $certPem = '';
-            openssl_x509_export($cert, $certPem);
-
-            // Get public key details for fingerprint
-            $pubKeyDetails = openssl_pkey_get_details($keyResource);
-            $publicKeyPem  = $pubKeyDetails['key'];
-            $fingerprint   = hash('sha256', $publicKeyPem);
-
-            // Save to files
-            $keyPath  = $certsDir . "university_{$universityId}.key.pem";
-            $certPath = $certsDir . "university_{$universityId}.cert.pem";
-            file_put_contents($keyPath, $privateKeyPem);
-            file_put_contents($certPath, $certPem);
-            chmod($keyPath, 0600); // private key readable only by web server user
-
-            // FIXED: Encrypt private key using AES-256-CBC before storage
-            $encryptedKey = $this->encryptPrivateKey($privateKeyPem);
-
-            // Upsert into university_keys
-            $stmt = $this->db->prepare("
-                INSERT INTO university_keys
-                    (university_id, certificate_path, certificate_password, public_key_pem, key_fingerprint, is_active)
-                VALUES (?, ?, ?, ?, ?, 1)
-                ON DUPLICATE KEY UPDATE
-                    certificate_path = VALUES(certificate_path),
-                    certificate_password = VALUES(certificate_password),
-                    public_key_pem = VALUES(public_key_pem),
-                    key_fingerprint = VALUES(key_fingerprint),
-                    is_active = 1,
-                    updated_at = NOW()
-            ");
-            $stmt->execute([
-                $universityId,
-                $certPath,
-                $encryptedKey,
-                $publicKeyPem,
-                $fingerprint,
-            ]);
-
-            return [
-                'fingerprint'    => $fingerprint,
-                'key_path'       => $keyPath,
-                'cert_path'      => $certPath,
-                'public_key_pem' => $publicKeyPem,
-            ];
-
-        } catch (\Exception $e) {
-            error_log("Key generation failed: " . $e->getMessage());
-            return null;
         }
     }
 
     // =========================================================================
     //  PRIVATE HELPERS
     // =========================================================================
+
+    /**
+     * First readable openssl.cnf: env OPENSSL_CONF, then bundled backend/certs/openssl.cnf,
+     * then common Windows locations (Git for Windows).
+     */
+    private function resolveOpenSslConfigPath(): ?string
+    {
+        $candidates = [];
+
+        $fromConfig = $this->config['signing']['openssl_config'] ?? '';
+        if (is_string($fromConfig) && $fromConfig !== '') {
+            $candidates[] = $fromConfig;
+        }
+
+        $candidates[] = __DIR__ . '/../certs/openssl.cnf';
+
+        if (\defined('PHP_OS_FAMILY') && PHP_OS_FAMILY === 'Windows') {
+            $candidates[] = 'C:\\Program Files\\Git\\usr\\ssl\\openssl.cnf';
+            $candidates[] = 'C:\\Program Files (x86)\\Git\\usr\\ssl\\openssl.cnf';
+        }
+
+        foreach ($candidates as $p) {
+            if ($p === '' || $p === null) {
+                continue;
+            }
+            if (@is_readable($p)) {
+                $real = @realpath($p);
+                return ($real !== false) ? $real : $p;
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Derive a 32-byte AES key from the configured secret.

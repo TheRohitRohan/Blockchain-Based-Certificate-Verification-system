@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDataContext } from '../../context/DataContext';
 import { useCertificatesContext } from '../../context/CertificatesContext';
 import { useAuthContext } from '../../context/AuthContext';
 import { FormField, Spinner } from '../../components/ui';
 import toast from 'react-hot-toast';
-import { BadgeCheck, Copy, Clipboard } from 'lucide-react';
+import { BadgeCheck, Copy, Loader2 } from 'lucide-react';
 
 const DEGREE_TYPES = ['Bachelor', 'Master', 'Doctor', 'Diploma', 'Certificate', 'Associate'];
 const today = () => new Date().toISOString().split('T')[0];
@@ -47,12 +48,57 @@ export default function IssueCertificate() {
     toast.success('Link copied');
   }
 
+  const loadingOverlay =
+    isLoading &&
+    createPortal(
+      <div
+        className="issue-cert-overlay"
+        role="alert"
+        aria-busy="true"
+        aria-live="polite"
+        aria-label="Issuing certificate, please wait"
+      >
+        <div className="issue-cert-progress-panel">
+          <div className="issue-cert-progress-icon">
+            <Spinner size={36} />
+          </div>
+          <p className="issue-cert-progress-title">Issuing certificate…</p>
+          <p className="issue-cert-progress-lead">
+            Your request is still running. This can take <strong>several minutes</strong> while we build the PDF,
+            sign it, and anchor it on the blockchain.
+          </p>
+          <ul className="issue-cert-progress-steps">
+            <li>
+              <Loader2 className="issue-cert-step-icon" size={14} aria-hidden />
+              Preparing certificate data and PDF
+            </li>
+            <li>
+              <Loader2 className="issue-cert-step-icon" size={14} aria-hidden />
+              Waiting for blockchain confirmation (mining)
+            </li>
+            <li>
+              <Loader2 className="issue-cert-step-icon" size={14} aria-hidden />
+              Saving and syncing your certificate list
+            </li>
+          </ul>
+          <p className="issue-cert-progress-foot">
+            Keep this tab open. Closing or refreshing may interrupt the process.
+          </p>
+        </div>
+      </div>,
+      document.body
+    );
+
   return (
     <div>
+      {loadingOverlay}
       <div className="page-header">
         <div>
           <p className="page-title">Issue Certificate</p>
-          <p className="page-sub">Create a new verified certificate for a student</p>
+          <p className="page-sub">
+            Create a new verified certificate for a student. On-chain registration and PDF generation can take several
+            minutes — keep this page open until the request completes.
+          </p>
         </div>
       </div>
 
@@ -62,9 +108,14 @@ export default function IssueCertificate() {
             <span className="section-card-title">Certificate Details</span>
           </div>
           <div style={{ height: 20 }} />
-          <form onSubmit={handleSubmit} className="form-grid">
+          <form onSubmit={handleSubmit} className="form-grid" aria-busy={isLoading}>
             <FormField label="Select Student" required>
-              <select className="form-select" value={form.student_id} onChange={set('student_id')}>
+              <select
+                className="form-select"
+                value={form.student_id}
+                onChange={set('student_id')}
+                disabled={isLoading}
+              >
                 <option value="">Search students…</option>
                 {students.map(s => (
                   <option key={s.id} value={s.id}>
@@ -75,18 +126,30 @@ export default function IssueCertificate() {
             </FormField>
 
             <FormField label="Course Name" required>
-              <input className="form-input" value={form.course_name} onChange={set('course_name')} placeholder="e.g. Computer Science" />
+              <input
+                className="form-input"
+                value={form.course_name}
+                onChange={set('course_name')}
+                placeholder="e.g. Computer Science"
+                disabled={isLoading}
+              />
             </FormField>
 
             <FormField label="Degree Type" required>
-              <select className="form-select" value={form.degree_type} onChange={set('degree_type')}>
+              <select className="form-select" value={form.degree_type} onChange={set('degree_type')} disabled={isLoading}>
                 <option value="">Select degree…</option>
                 {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </FormField>
 
             <FormField label="Issue Date" required>
-              <input type="date" className="form-input" value={form.issue_date} onChange={set('issue_date')} />
+              <input
+                type="date"
+                className="form-input"
+                value={form.issue_date}
+                onChange={set('issue_date')}
+                disabled={isLoading}
+              />
             </FormField>
 
             <button type="submit" className="btn-primary" disabled={isLoading} style={{ justifyContent: 'center' }}>

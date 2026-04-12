@@ -53,7 +53,7 @@ export default function ProfilePage() {
           {[
             ['Email', user?.email],
             ['Role', role],
-            ['Name', user?.full_name],
+            ['Name', user?.full_name ?? user?.name ?? user?.admin_name],
           ].map(([label, val]) => (
             <div key={label} className="detail-row">
               <span className="detail-key">{label}</span>

@@ -31,7 +31,7 @@ class CertificateService {
             
             // Get student info
             $stmt = $this->db->prepare("
-                SELECT s.id, s.student_id, u.full_name, un.name as university_name, un.code as university_code
+                SELECT s.id, s.student_id, s.university_id, u.full_name, un.name as university_name, un.code as university_code
                 FROM students s 
                 JOIN users u ON s.user_id = u.id 
                 JOIN universities un ON s.university_id = un.id
@@ -42,6 +42,11 @@ class CertificateService {
             
             if (!$student) {
                 throw new \Exception("Student not found");
+            }
+
+            $issuerUniversityId = (int)($data['university_id'] ?? 0);
+            if ($issuerUniversityId < 1 || (int)$student['university_id'] !== $issuerUniversityId) {
+                throw new \Exception('Student does not belong to your university');
             }
             
             // Generate certificate ID
@@ -179,145 +184,126 @@ class CertificateService {
     }
     
     /**
-     * Upload and process certificate (Mode 2: Upload Certificate)
+     * Upload certificate (Mode 2: Upload Certificate PDF)
+     *
+     * Identical pipeline to createCertificate() — all certificate data comes from
+     * form inputs ($data), not from the PDF. The uploaded PDF is used purely as the
+     * visual document; any existing XMP metadata in it is overwritten with the
+     * canonical metadata built from $data.
+     *
+     * @param array $uploadedFile  $_FILES entry for the PDF
+     * @param array $data          Same fields as createCertificate(): student_id (DB row ID),
+     *                             university_id, course_name, degree_type, issue_date
      */
-    public function uploadCertificate($uploadedFile, $universityId)
+    public function uploadCertificate(array $uploadedFile, array $data): array
     {
+        $tempPath = null;
+
         try {
+            // ── Validate uploaded file ─────────────────────────────────────────────
             if (!isset($uploadedFile['tmp_name']) || !is_uploaded_file($uploadedFile['tmp_name'])) {
                 throw new \Exception("Invalid file upload");
             }
 
-            // FIX 5: Validate file size (10MB limit) to prevent memory exhaustion/DoS
-            $maxFileSize = 10 * 1024 * 1024; // 10MB
+            $maxFileSize = 10 * 1024 * 1024; // 10 MB
             if ($uploadedFile['size'] > $maxFileSize) {
                 throw new \Exception("File too large. Maximum allowed size is 10MB.");
             }
 
-            $fileInfo = pathinfo($uploadedFile['name']);
-            if (strtolower($fileInfo['extension']) !== 'pdf') {
+            // Validate by MIME type, not just extension
+            $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->file($uploadedFile['tmp_name']);
+            if ($mimeType !== 'application/pdf') {
                 throw new \Exception("Only PDF files are allowed");
             }
 
-            // Move to temp location
+            $this->db->beginTransaction();
+
+            // ── Step 1: Resolve and validate student (same as createCertificate) ───
+            $stmt = $this->db->prepare("
+                SELECT s.id, s.student_id, s.university_id,
+                       u.full_name,
+                       un.name AS university_name,
+                       un.code AS university_code
+                FROM students s
+                JOIN users u  ON s.user_id      = u.id
+                JOIN universities un ON s.university_id = un.id
+                WHERE s.id = ?
+            ");
+            $stmt->execute([$data['student_id']]);
+            $student = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$student) {
+                throw new \Exception("Student not found");
+            }
+
+            $issuerUniversityId = (int)($data['university_id'] ?? 0);
+            if ($issuerUniversityId < 1 || (int)$student['university_id'] !== $issuerUniversityId) {
+                throw new \Exception("Student does not belong to your university");
+            }
+
+            // ── Step 2: Generate certificate ID (same as createCertificate) ────────
+            $certificateId = 'CERT-' . strtoupper(uniqid());
+
+            // ── Step 3: Build canonical metadata from form data ────────────────────
+            $metadata = $this->metadataService->buildMetadata([
+                'certificate_id'  => $certificateId,
+                'student_id'      => $student['student_id'],
+                'student_name'    => $student['full_name'],
+                'course_name'     => $data['course_name'],
+                'degree_type'     => $data['degree_type'] ?? null,
+                'issue_date'      => $data['issue_date'],
+                'university_code' => $student['university_code'],
+                'university_name' => $student['university_name'],
+            ]);
+
+            $metadataJson = $this->metadataService->generateMetadataJson($metadata);
+            $metadataHash = $this->metadataService->generateMetadataHash($metadata);
+
+            // ── Step 4: Move uploaded PDF to temp storage ──────────────────────────
             $tempPath = $this->getConfig()['storage']['pdf_path'] . 'temp_' . uniqid() . '.pdf';
             move_uploaded_file($uploadedFile['tmp_name'], $tempPath);
 
-            // ── Step 1: Extract metadata from PDF (XMP or text fallback) ──────────
-            $metadata = $this->pdfService->extractMetadata($tempPath);
+            // ── Step 5: Overwrite any existing XMP metadata with canonical metadata ─
+            // Any metadata already in the PDF is intentionally ignored and replaced.
+            $this->pdfService->embedMetadataIntoPDF($tempPath, $metadata);
 
-            if (!$metadata) {
-                $text     = $this->pdfService->extractText($tempPath);
-                $metadata = $this->parseMetadataFromText($text);
-            }
+            // ── Step 6: Overlay QR code ────────────────────────────────────────────
+            $this->pdfService->addQRCodeToExistingPDF($tempPath, $certificateId);
+            $qrCodeFileName = $this->pdfService->generateQRCodeFileName($certificateId);
 
-            if (!$metadata || !isset($metadata['certificate_id'])) {
-                @unlink($tempPath);
-                throw new \Exception("Could not extract certificate information from PDF. "
-                    . "Ensure the PDF contains a certificate_id field in its XMP metadata "
-                    . "or visible text matching CERT-XXXXXXXX format.");
-            }
-
-            // FIX 6: Sanitize certificate_id to prevent path injection
-            $metadata['certificate_id'] = preg_replace('/[^A-Za-z0-9\-]/', '', $metadata['certificate_id']);
-            if (empty($metadata['certificate_id'])) {
-                @unlink($tempPath);
-                throw new \Exception("Invalid certificate ID format");
-            }
-
-            // ── Step 2: Validate against database ─────────────────────────────────
-            $existing = $this->getCertificate($metadata['certificate_id']);
-            if ($existing) {
-                @unlink($tempPath);
-                throw new \Exception("Certificate {$metadata['certificate_id']} already exists in the system.");
-            }
-
-            // FIX 3: Validate certificate ownership - university_code must match uploading university
-            $expectedUniversityCode = $this->getUniversityCode($universityId);
-            if (!empty($metadata['university_code']) && !empty($expectedUniversityCode)) {
-                if ($metadata['university_code'] !== $expectedUniversityCode) {
-                    @unlink($tempPath);
-                    throw new \Exception("Invalid certificate ownership: university code mismatch");
-                }
-            }
-
-            // Resolve student record from student_id in metadata
-            $studentRow = null;
-            if (!empty($metadata['student_id'])) {
-                $stmt = $this->db->prepare("
-                    SELECT s.id, s.student_id, u.full_name, un.name as university_name, un.code as university_code
-                    FROM students s
-                    JOIN users u ON s.user_id = u.id
-                    JOIN universities un ON s.university_id = un.id
-                    WHERE s.student_id = ? AND s.university_id = ?
-                ");
-                $stmt->execute([$metadata['student_id'], $universityId]);
-                $studentRow = $stmt->fetch(\PDO::FETCH_ASSOC);
-            }
-
-            // student_id FK: use resolved row if found, otherwise null (allow upload without student link)
-            $studentFk = $studentRow ? $studentRow['id'] : null;
-
-            $this->db->beginTransaction();
-
-            // ── Step 3: Build canonical metadata ──────────────────────────────────
-            $fullMetadata = $this->metadataService->buildMetadata([
-                'certificate_id'  => $metadata['certificate_id'],
-                'student_id'      => $studentRow['student_id']       ?? ($metadata['student_id'] ?? ''),
-                'student_name'    => $studentRow['full_name']         ?? ($metadata['student_name'] ?? ''),
-                'course_name'     => $metadata['course_name']         ?? '',
-                'degree_type'     => $metadata['degree_type']         ?? '',
-                'issue_date'      => $metadata['issue_date']          ?? date('Y-m-d'),
-                'university_code' => $studentRow['university_code']   ?? ($metadata['university_code'] ?? ''),
-                'university_name' => $studentRow['university_name']   ?? ($metadata['university_name'] ?? ''),
-            ]);
-            $metadataJson = $this->metadataService->generateMetadataJson($fullMetadata);
-            $metadataHash = $this->metadataService->generateMetadataHash($fullMetadata);
-
-            // ── Step 4: Embed canonical metadata into PDF ──────────────────────────
-            $this->pdfService->embedMetadataIntoPDF($tempPath, $fullMetadata);
-
-            // ── Step 5: Add QR code if not already present ─────────────────────────
-            $existingText = $this->pdfService->extractText($tempPath);
-            $hasQR = (strpos($existingText, 'verify?certificate_id') !== false
-                    || strpos(file_get_contents($tempPath), 'cert:metadata') !== false);
-            // Always add/overlay QR — it's a separate overlay, won't break existing content
-            $this->pdfService->addQRCodeToExistingPDF($tempPath, $metadata['certificate_id']);
-
-            // Step 5b: Generate QR code filename for database (used for Flow 2 uploads)
-            $qrCodeFileName = $this->pdfService->generateQRCodeFileName($metadata['certificate_id']);
-
-            // ── Step 6: Calculate PDF hash BEFORE signing ──────────────────────────
-            // This is the hash of the metadata-embedded PDF (before signature is added).
-            // Matches the flow in createCertificate() to ensure consistency.
+            // ── Step 7: Calculate PDF hash BEFORE signing ─────────────────────────
             $pdfHash     = $this->pdfService->calculatePDFHash($tempPath);
             $onchainHash = $this->blockchain->generateCombinedHash($metadataHash, $pdfHash);
 
-            // ── Step 7: Sign the PDF with the calculated onchain hash ──────────────
-            // FIXED: Now passes onchainHash as required third parameter
-            $signatureStatus = $this->signatureService->signPDF($tempPath, $universityId, $onchainHash);
+            // ── Step 8: Sign the PDF using the onchain hash ────────────────────────
+            $signatureStatus = $this->signatureService->signPDF($tempPath, $data['university_id'], $onchainHash);
             if (!$signatureStatus) {
-                error_log("Warning: PDF signing failed for upload {$metadata['certificate_id']}");
+                error_log("Warning: PDF signing failed for upload {$certificateId} — certificate will be unsigned");
             }
 
-            // ── Step 8: Store on blockchain ───────────────────────────────────────
+            // ── Step 9: Anchor on blockchain ──────────────────────────────────────
             $blockchainResult = $this->blockchain->issueCertificate([
-                'certificate_id'   => $metadata['certificate_id'],
-                'student_name'     => $fullMetadata['student_name'] ?? '',
-                'university_name'  => $fullMetadata['university_name'] ?? '',
-                'course_name'      => $fullMetadata['course_name'] ?? '',
-                'issue_date'       => $fullMetadata['issue_date'] ?? date('Y-m-d'),
+                'certificate_id'   => $certificateId,
+                'student_name'     => $student['full_name'],
+                'university_name'  => $student['university_name'],
+                'course_name'      => $data['course_name'],
+                'issue_date'       => $data['issue_date'],
                 'certificate_hash' => $onchainHash,
             ]);
+
+            $isMock      = $blockchainResult['mock'] ?? false;
+            $txHash      = $blockchainResult['tx_hash'] ?? null;
             $blockNumber = $this->blockchain->getCurrentBlock();
             $chainId     = $this->getConfig()['blockchain']['chain_id'] ?? 1337;
 
-            // ── Step 9: Move to final storage location ────────────────────────────
-            $finalFilename = $metadata['certificate_id'] . '_uploaded_' . date('Y-m-d') . '.pdf';
+            // ── Step 10: Move PDF to final storage location ───────────────────────
+            $finalFilename = $certificateId . '_uploaded_' . date('Y-m-d') . '.pdf';
             $finalPath     = $this->getConfig()['storage']['pdf_path'] . $finalFilename;
             rename($tempPath, $finalPath);
+            $tempPath = null; // Prevent cleanup from deleting the now-renamed file
 
-            // ── Step 10: Persist to database ──────────────────────────────────────
+            // ── Step 11: Persist to database ──────────────────────────────────────
             $stmt = $this->db->prepare("
                 INSERT INTO certificates
                 (certificate_id, student_id, university_id, course_name, degree_type, issue_date,
@@ -328,16 +314,16 @@ class CertificateService {
             ");
 
             $stmt->execute([
-                $metadata['certificate_id'],
-                $studentFk,
-                $universityId,
-                $fullMetadata['course_name'] ?? '',
-                $fullMetadata['degree_type'] ?? null,
-                $fullMetadata['issue_date']  ?? date('Y-m-d'),
+                $certificateId,
+                $student['id'],
+                $data['university_id'],
+                $data['course_name'],
+                $data['degree_type'] ?? null,
+                $data['issue_date'],
                 $onchainHash,
-                $blockchainResult['tx_hash'] ?? null,
+                $txHash,
                 $finalFilename,
-                $qrCodeFileName,        // Now populated for uploaded certificates
+                $qrCodeFileName,
                 $metadataHash,
                 $pdfHash,
                 $onchainHash,
@@ -349,19 +335,25 @@ class CertificateService {
             ]);
 
             $this->db->commit();
+            $this->warmupCertificateCache($certificateId, $onchainHash, !$isMock);
 
             return [
                 'success'          => true,
-                'certificate_id'   => $metadata['certificate_id'],
+                'certificate_id'   => $certificateId,
+                'certificate_hash' => $onchainHash,
+                'metadata_hash'    => $metadataHash,
+                'pdf_hash'         => $pdfHash,
+                'tx_hash'          => $txHash ?? 'pending',
+                'blockchain_mode'  => $isMock ? 'mock' : 'live',
                 'signature_status' => $signatureStatus,
-                'message'          => 'Certificate uploaded and processed successfully',
+                'pdf_path'         => $finalFilename,
             ];
 
         } catch (\Exception $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
-            if (isset($tempPath) && file_exists($tempPath)) {
+            if ($tempPath !== null && file_exists($tempPath)) {
                 @unlink($tempPath);
             }
             error_log("Certificate upload failed: " . $e->getMessage());

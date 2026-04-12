@@ -1,90 +1,235 @@
 # Blockchain Integration Guide
 
-The Certificate Verification System uses an Ethereum-compatible architecture (defaulting to the Sepolia testnet) via Alchemy's RPC infrastructure to immutably anchor academic certificates.
+The Certificate Verification System uses the **Ethereum Sepolia Testnet** via **Alchemy's RPC infrastructure** to immutably anchor academic certificates on-chain. All blockchain anchoring is **synchronous** (blocking) during certificate creation, with graceful fallback to mock mode if blockchain is unavailable.
 
-## What Blockchain is Used?
+## Network & Infrastructure
 
-The backend specifically connects to Ethereum/EVM-compatible networks. The transactions are fired via raw byte requests utilizing the `Web3 PHP` library combined with `kornrunner/ethereum-offline-raw-tx`. It does not rely on local Ethereum nodes, but instead directly queries an Alchemy RPC Endpoint over HTTP.
+- **Network**: Ethereum Sepolia Testnet (ChainID: `11155111`)
+- **RPC Provider**: Alchemy (https://eth-sepolia.g.alchemy.com)
+- **Library**: `web3-php` + `kornrunner/ethereum-offline-raw-tx` for raw transaction encoding
+- **Execution**: Direct HTTP JSON-RPC calls (no local node required)
+- **Direct Raw Transactions**: Uses `ext-gmp` PHP extension for cryptographic integer operations
 
 ## Smart Contract Details
 
-The smart contract acts as an immutable registry. It does **not** store entire PDFs; it stores 64-character Keccak256 hashes ensuring data integrity.
+The smart contract acts as an immutable, tamper-proof registry. It stores **only Keccak256 hashes** (64-char strings), not entire PDFs or document content.
 
-- **ABI Location**: `abi/CertificateRegistry.json`
+- **Location**: `abi/CertificateRegistry.json`
+- **Deployment**: Must be deployed independently using Truffle/Hardhat/Foundry. Address then manually configured in `.env` as `CONTRACT_ADDRESS`.
 
 ### Functions:
-1. `issueCertificate(certificateId, studentName, universityName, courseName, issueDate, certificateHash)`: Locks the certificate into the registry block.
-2. `getCertificate(certificateId)`: Returns a struct representing the exact data sent during issuance, including validity and the block timestamp.
-3. `verifyCertificate(certificateId, certificateHash)`: Returns a boolean indicating whether the `certificateId` matches the specific cryptographic payload.
-4. `revokeCertificate(certificateId)`: Permanently alters the `is_revoked` boolean state of a record to true. Cannot be undone.
-5. `admin()`: A read function to retrieve the deployer/owner's address string.
 
-*(Note: There are no scripts or documentation currently living in the PHP codebase related to the initial deployment of the smart contract itself. Currently, the contract must be deployed independently using hardhat, foundry, or remix, and its execution address transplanted manually into the app config.)*
+| Function | Parameters | Returns | Purpose |
+|----------|------------|---------|---------|
+| `issueCertificate` | certificateId, certificateHash, studentName, universityName, courseName, issueDate | tx_hash, block_number | Lock certificate into immutable registry |
+| `verifyCertificate` | certificateId, certificateHash | boolean | Verify certificate exists and hash matches |
+| `getCertificate` | certificateId | struct | Retrieve certificate data from chain (readonly) |
+| `revokeCertificate` | certificateId | tx_hash | Permanently mark certificate as revoked |
+| `admin` | - | address | Retrieve contract deployer address (readonly) |
+
+## Synchronous Blockchain Anchoring
+
+**Certificate creation is BLOCKING**. When `/certificates/create` or `/certificates/upload` is called:
+
+1. Backend generates certificate locally (PDF, metadata, hashes)
+2. **Synchronously** calls `Blockchain::issueCertificate()` (blocks up to 60 seconds)
+3. Waits for transaction confirmation
+4. Stores TX hash in DB if successful
+5. Returns response with `blockchain_mode: 'live'` or `'mock'`
+
+**No queue, no retries, no background jobs**. The entire operation completes before the API response is sent.
+
+### Response Format:
+```json
+{
+  "success": true,
+  "certificate_id": "CERT-ABC123",
+  "blockchain_mode": "live",
+  "blockchain_tx_hash": "0x1234...",
+  "onchain_hash": "0xABCD...",
+  "message": "Certificate created and anchored successfully"
+}
+```
 
 ## Environment Configuration
 
-The Integration strictly relies upon the following `.env` parameters parsed by `config.php`:
+Configure the following `.env` parameters parsed by `config.php`:
 
-```dotenv
-BLOCKCHAIN_RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
-CONTRACT_ADDRESS=0xYourDeployedAddress
-BLOCKCHAIN_PRIVATE_KEY=0xYourRawPrivateKey  # Without it, mock mode executes 
-BLOCKCHAIN_DEFAULT_ADDRESS=0xYourDefaultWalletAddress
-BLOCKCHAIN_WALLET_ADDRESS=0xYourFallbackWalletAddress
-BLOCKCHAIN_GAS_LIMIT=3000000
+```bash
+# Blockchain Network
+BLOCKCHAIN_RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY
+CONTRACT_ADDRESS=0xYourDeployedContractAddress
 BLOCKCHAIN_CHAIN_ID=11155111
-```
+BLOCKCHAIN_GAS_LIMIT=3000000
 
-> **Note on `KEY_ENCRYPTION_SECRET`**: `KEY_ENCRYPTION_SECRET` is required by `SignatureService` for encrypting university private keys but is not present in the default `config.php` signing block. It must be added manually to `config.php` under `signing.key_encryption_secret`.
+# Private Key for Signing Transactions
+BLOCKCHAIN_PRIVATE_KEY=0xYourPrivateKeyInHex
+BLOCKCHAIN_DEFAULT_ADDRESS=0xYourWalletAddress  # Fallback override
+BLOCKCHAIN_WALLET_ADDRESS=0xYourWalletAddress   # Sender address
+```
 
 ## The Cryptographic Hashing Strategy
 
-A certificate goes through multiple hash layers prior to final EVM anchoring. This pipeline guarantees that tampering with the PDF visually breaks the verification, and altering the embedded DB text breaks the verification.
+Certificates pass through multiple hash layers to ensure both PDF integrity and metadata integrity:
 
-1. `metadata_hash`: A pure JSON Keccak256 representation of the normalized data (student name, issue date, URL codes).
-2. `pdf_hash`: The Keccak256 hash of the generated or uploaded PDF file binary *before* the RSA signature is embedded.
-3. `onchain_hash`: `Keccak256(metadata_hash + pdf_hash)`. This is the final 64-character payload string saved into the Smart Contract registry as the `certificateHash`.
+### Hash Layers:
 
-### The Signing Relationship
-Because the `onchain_hash` is fully decoupled from the final rendered bytes of the signed PDF, the `SignatureService` utilizes this identical payload to do the math. 
-The system signs the `onchain_hash`, embeds the math into the existing PDF XMP block, and saves the file. If we signed the PDF binary directly, embedding the signature would change the PDF binary, recursively invalidating it. Using `onchain_hash` solves this gracefully. 
+1. **`metadata_hash`** = `Keccak256(JSON metadata string)`
+   - Normalized by `MetadataService::buildMetadata()`
+   - Contains: student name, course, issue date, university code, schema version
+   - Immutable once set
+
+2. **`pdf_hash`** = `Keccak256(PDF binary bytes)`
+   - Calculated BEFORE signing
+   - Ensures PDF tampering is detected
+
+3. **`onchain_hash`** = `Keccak256(metadata_hash + pdf_hash)`
+   - Final 64-char payload anchored to blockchain
+   - What gets digitally signed with university's RSA private key
+   - Stored in smart contract for verification
+
+### Why This Structure?
+
+Because embedding a signature into the PDF changes its binary content, which would invalidate the PDF hash, we use the **`onchain_hash`** (computed before signing) as the stable payload for both:
+- Smart contract anchoring
+- RSA signature generation
+- Verification later
+
+This decouples cryptographic proof from physical file mutations.
 
 ## Onchain Mechanics & Data Flow
 
-### Issuance 
-`issueCertificate()` calls `sendRawTransaction` under the hood. The `ext-gmp` extension formats the integers to EVM parameters. Next, `getTransactionCount()` increments the nonce automatically, the contract payload is converted into `getData()` hex encodings, and successfully confirmed against the chain up to `60` seconds of waiting time.
+### Issuance (Synchronous)
+```
+/certificates/create {data}
+    ↓
+CertificateService::createCertificate()
+    ├→ Build metadata, calculate metadata_hash
+    ├→ Generate PDF, calculate pdf_hash
+    ├→ Combine: onchain_hash = keccak256(metadata_hash + pdf_hash)
+    ├→ Sign onchain_hash with university RSA key
+    ├→ Store in DB
+    └→ Call Blockchain::issueCertificate (BLOCKS HERE)
+         ├→ Check connection & mock mode
+         ├→ Get nonce from blockchain
+         ├→ Create raw transaction
+         ├→ Sign with BLOCKCHAIN_PRIVATE_KEY
+         ├→ Send to RPC endpoint
+         ├→ Poll for confirmation (up to 60s)
+         └→ Return tx_hash or null (if failed/mock)
+    ↓
+Response: {success, blockchain_mode, tx_hash}
+```
 
-### Verification 
-`verifyCertificate()` conducts a free read-query evaluating the ID against the requested `onchain_hash`. The result returns instantly. To prevent spamming Alchemy RPC limits during high volumes, the backend utilizes `Redis` or file caching with a `300s TTL (5 Minutes)` mapping the exact `blockchain_verify:{ID}:{HASH}`.
+### Verification (Cached, Read-only)
+```
+/public/verify {certificateId}
+    ↓
+VerificationEngine::verifyByCertificateId()
+    ├→ Lookup certificate in DB
+    ├→ Extract onchain_hash
+    ├→ Check 5-minute cache key: blockchain_verify:{id}:{hash}
+    ├→ If cached HIT: return cached result
+    ├→ If cache MISS: Call Blockchain::verifyCertificate() (read-only, no gas)
+    │   └→ Query smart contract for {id, hash} match
+    ├→ Cache result (300s TTL, only if true)
+    └→ Return {valid: true/false, blockchain_valid, ...}
+```
 
-### Revocation
-`revokeCertificate()` executes a state-changing Ethereum transaction mirroring issuance. Upon confirmation, the backend manually purges the Redis keys associated with the original certificate ID because the state has radically shifted.
+**Caching**: To prevent RPC throttling, verification results are cached for **5 minutes**. Only successful verifications (true) are cached; failures bypass cache so they're re-queried on next request.
 
----
+### Revocation (Synchronous)
+```
+/certificates/revoke {certificateId}
+    ↓
+CertificateService::revokeCertificate()
+    ├→ Mark certificate status = 'revoked' in DB
+    ├→ Call Blockchain::revokeCertificate() (BLOCKS HERE)
+    │   ├→ Create & sign transaction
+    │   ├→ Send to RPC
+    │   └→ Return tx_hash
+    ├→ Invalidate blockchain cache: blockchain_verify:{id}:*
+    └→ Response: {success, tx_hash}
+```
 
-## Mock Mode & Known Issues
+## Mock Mode & Graceful Degradation
 
-`Blockchain.php` utilizes a "Mock Mode" whenever it encounters fatal connection or configuration errors to prevent the entire system from experiencing downtime. 
+If blockchain is unavailable or misconfigured, the system activates **Mock Mode** to prevent total outage. Certificates can still be issued and verified locally.
 
-**Activation Drivers:**
-- Network connection fails (Timeout from Alchemy).
-- `BLOCKCHAIN_RPC` is empty or incorrectly formatted.
-- Server is missing the `ext-gmp` math library necessary for executing PHP cryptography.
-- `BLOCKCHAIN_PRIVATE_KEY` is missing/empty.
+### Activation Conditions:
 
-**Mock Behavior:**
-If `mock` activates, the application continues functionally operating local certificates and databases seamlessly. Specifically:
-- `tx_hash` is `null` (it does not generate a fake random hash).
-- `mock: true` is present in the `Blockchain.php` response so callers can detect it.
-- `CertificateService` now exposes `blockchain_mode: 'mock'` in its return value so the API consumer can see it cleanly.
+Mock mode automatically activates when:
+- Alchemy RPC endpoint is unreachable (timeout/500 error)
+- `BLOCKCHAIN_RPC` is empty or malformed
+- `BLOCKCHAIN_PRIVATE_KEY` is missing
+- `ext-gmp` extension unavailable (needed for EVM math)
+- Contract address is not configured
+- Network connection fails
 
-**Diagnostic Status via `getConnectionStatus()`:**
-The `Blockchain.php` class provides a `getConnectionStatus()` method which returns diagnostic info about why mock mode was activated:
-- `connected`: bool
-- `mock_mode`: bool
-- `error`: string|null — the specific reason for failure
-- `rpc_url`: 'configured' | 'missing'
-- `contract_address`: 'configured' | 'missing'
+### Mock Behavior:
 
-> [!WARNING]
-> **Database Indistinguishability Issue**: A known logic failure exists wherein mock transaction failures are entirely omitted or passed over during the DB transaction `INSERT`. A certificate successfully generated under mock mode has `blockchain_tx_hash: null`, but its `onchain_hash` is generated fully accurately, meaning developers cannot inherently trust if the `onchain_hash` exists on Ethereum purely by looking at the DB row. Always review the `tx_hash` specifically.
+| Aspect | Live Mode | Mock Mode |
+|--------|-----------|-----------|
+| `blockchain_tx_hash` | Real tx hash (0x1234...) | `null` |
+| `blockchain_status` | `anchored` | `mock` |
+| `blockchain_mode` | `'live'` | `'mock'` |
+| Certificate stored? | ✅ Yes | ✅ Yes |
+| Locally verifiable? | ✅ Yes | ✅ Yes |
+| Cryptographically signed? | ✅ Yes | ✅ Yes |
+| On Ethereum? | ✅ Yes | ❌ No |
+| Mock hash stored? | N/A | No fake hashes generated |
+
+### Detection:
+
+API consumers can detect mock mode via response:
+```json
+{
+  "success": true,
+  "blockchain_mode": "mock",
+  "blockchain_tx_hash": null,
+  "message": "Certificate created locally (blockchain unavailable)"
+}
+```
+
+### Diagnostic Status:
+
+`Blockchain::getConnectionStatus()` returns:
+```json
+{
+  "connected": false,
+  "mock_mode": true,
+  "error": "Connection refused: Alchemy RPC timeout",
+  "rpc_url": "configured",
+  "contract_address": "configured"
+}
+```
+
+## Verification During Blockchain Outage
+
+Even if blockchain is down, verification continues:
+
+1. **Signature verification**: RSA-based, all keys stored locally → works offline
+2. **Metadata verification**: Database comparison → works offline
+3. **Hash verification**: Local Keccak256 calculation → works offline
+4. **Blockchain check**: Marked as `blocked_unavailable`, continues anyway
+
+Result: Certificate marked as valid if local checks pass, with note that blockchain couldn't be verified.
+
+## Known Limitations & Issues
+
+1. **No TX Monitoring**: Database columns `blockchain_attempts`, `blockchain_error`,`blockchain_submitted_at` exist but are never updated post-creation. No background job polls failed transactions.
+
+2. **Mock Hash Ambiguity**: Certificates issued in mock mode have `blockchain_tx_hash: null`, but cannot be visually distinguished from live certificates until deployment/network recovery. Review `blockchain_status` field for definitive status.
+
+3. **Database Stale Status**: Once a certificate is created with a blockchaina status, it is NEVER automatically updated. If block confirmation takes longer than expected, the database state may lag behind actual blockchain state. Manual intervention required.
+
+4. **No Async Retry**: Failed transactions are NOT automatically retried. If `issueCertificate()` times out, the certificate is stored with `tx_hash: null` silently.
+
+5. **Gas Estimation**: `BLOCKCHAIN_GAS_LIMIT` is fixed. No dynamic gas price adjustment based on network conditions.
+
+## Testing & Sepolia Testnet
+
+- **Faucets**: Get free Sepolia ETH from https://sepoliafaucet.com
+- **Block Explorer**: https://sepolia.etherscan.io
+- **Test Interval**: Blocks ~12-15 seconds; transactions confirm in 1-3 blocks
+- **Alchemy Free Tier**: Sufficient for development (rate-limited to ~30 req/sec)

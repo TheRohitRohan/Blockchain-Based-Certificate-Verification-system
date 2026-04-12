@@ -8,8 +8,8 @@ import { LayoutDashboard, University, ScrollText, CheckCircle, XCircle } from 'l
 
 export default function AdminDashboard() {
   const { user } = useAuthContext();
-  const { universities, fetchUniversities } = useDataContext();
-  const { certificates, fetchCertificates, isLoading } = useCertificatesContext();
+  const { universities = [], fetchUniversities } = useDataContext();
+  const { certificates = [], fetchCertificates, isLoading } = useCertificatesContext();
 
   useEffect(() => {
     fetchUniversities();
@@ -18,10 +18,11 @@ export default function AdminDashboard() {
 
   if (isLoading && certificates.length === 0) return <PageSpinner />;
 
-  const active = certificates.filter(c => c.status === 'active').length;
-  const revoked = certificates.filter(c => c.status === 'revoked').length;
-  const recent = [...certificates]
-    .sort((a, b) => new Date(b.created_at ?? b.issue_date) - new Date(a.created_at ?? a.issue_date))
+  const safe_certs = Array.isArray(certificates) ? certificates : [];
+  const active = safe_certs.filter(c => c?.status === 'active').length;
+  const revoked = safe_certs.filter(c => c?.status === 'revoked').length;
+  const recent = [...safe_certs]
+    .sort((a, b) => new Date(b?.created_at ?? b?.issue_date) - new Date(a?.created_at ?? a?.issue_date))
     .slice(0, 10);
 
   return (

@@ -51,8 +51,10 @@ function buildInitialState() {
     id: payload.user_id,
     email: payload.email,
     role: payload.role,
-    // full_name and university_id are not in the JWT payload by default;
-    // they'll be populated after the first successful login
+    university_id: payload.university_id ?? null,
+    admin_name: payload.admin_name ?? null,
+    university_name: payload.university_name ?? null,
+    full_name: payload.full_name ?? payload.admin_name ?? null,
   };
   return { user, token, isAuthenticated: true, isLoading: false };
 }
@@ -98,8 +100,11 @@ export function AuthProvider({ children }) {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const data = await apiLogin(email, password);
+      console.log('Login API response:', { success: data.success, hasToken: !!data.token });
       if (data.success && data.token) {
         localStorage.setItem(TOKEN_KEY, data.token);
+        console.log('✓ Token stored in localStorage:', TOKEN_KEY);
+        console.log('Token payload:', data.token.split('.')[1]); // Log the payload part (for debugging)
         dispatch({
           type: 'LOGIN_SUCCESS',
           payload: { user: data.user, token: data.token },
@@ -107,10 +112,12 @@ export function AuthProvider({ children }) {
         return { success: true, user: data.user };
       }
       dispatch({ type: 'SET_LOADING', payload: false });
+      console.warn('Login failed:', data.error);
       return { success: false, error: data.error ?? 'Login failed' };
     } catch (err) {
       dispatch({ type: 'SET_LOADING', payload: false });
       const message = err.response?.data?.error ?? err.message ?? 'Login failed';
+      console.error('Login error:', { status: err.response?.status, error: message });
       return { success: false, error: message };
     }
   }, []);
@@ -118,6 +125,19 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     dispatch({ type: 'LOGOUT' });
+  }, []);
+
+  /**
+   * Accepts a pre-fetched { token, user } object (e.g. from the university login
+   * endpoint) and stores the token in localStorage and updates auth state —
+   * without making a second API call.
+   */
+  const loginWithData = useCallback((tokenData) => {
+    localStorage.setItem(TOKEN_KEY, tokenData.token);
+    dispatch({
+      type: 'LOGIN_SUCCESS',
+      payload: { user: tokenData.user, token: tokenData.token },
+    });
   }, []);
 
   const register = useCallback(async (data) => {
@@ -144,6 +164,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     register,
+    loginWithData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

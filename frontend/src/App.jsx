@@ -1,6 +1,6 @@
 import '@fontsource-variable/mona-sans';
 import './index.css';
-import './app.css';
+import './App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { Toaster } from 'react-hot-toast';
 
@@ -25,6 +25,8 @@ import UniversityDashboard from './pages/university/UniversityDashboard';
 import UniversityStudents from './pages/university/UniversityStudents';
 import IssueCertificate from './pages/university/IssueCertificate';
 import UniversityCertificates from './pages/university/UniversityCertificates';
+import UniversityLogin from './pages/university/UniversityLogin';
+import UniversityRegister from './pages/university/UniversityRegister';
 
 // Student pages
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -56,6 +58,8 @@ export default function App() {
 
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/university/login" element={<UniversityLogin />} />
+        <Route path="/university/register" element={<UniversityRegister />} />
         <Route path="/verify" element={<VerifyPage />} />
 
         {/* Protected dashboard routes */}

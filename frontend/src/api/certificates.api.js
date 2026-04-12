@@ -37,7 +37,8 @@ export async function listCertificates() {
  * @returns {{ success: boolean, certificate_id: string, certificate_hash: string, tx_hash: string }}
  */
 export async function createCertificate(data) {
-  const res = await axiosInstance.post('/certificates/create', data);
+  // Blockchain + PDF pipeline can exceed the default axios timeout (15s).
+  const res = await axiosInstance.post('/certificates/create', data, { timeout: 600000 });
   return res.data;
 }
 
@@ -82,6 +83,52 @@ export function getCertificateDownloadUrl(certificateId) {
 }
 
 /**
+ * Map GET /public/verify JSON (certificate_info + conclusion) to the flat shape VerifyPage expects.
+ */
+function normalizePublicVerifyResponse(data) {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, status: 'not_found' };
+  }
+
+  // Already in flat form
+  if (data.certificate && typeof data.status === 'string') {
+    return data;
+  }
+
+  if (data.success && data.certificate_info?.identity) {
+    const { identity, status: st, blockchain } = data.certificate_info;
+    const conclusion = data.conclusion || {};
+    const vr = data.verification_result || {};
+    const overall = conclusion.overall_status ?? vr.status ?? 'not_found';
+    const valid = !!(conclusion.is_valid ?? vr.valid ?? false);
+
+    const allowed = new Set(['valid', 'revoked', 'not_found', 'invalid']);
+    let status = allowed.has(overall) ? overall : 'not_found';
+
+    return {
+      valid: valid && status === 'valid',
+      status,
+      certificate: {
+        certificate_id: identity.certificate_id,
+        student_name: identity.student_name,
+        university_name: identity.university_name,
+        course_name: identity.course_name,
+        degree_type: identity.degree_type,
+        issue_date: identity.issue_date,
+        status: st?.current_status ?? null,
+        blockchain_tx_hash: blockchain?.tx_hash ?? null,
+      },
+    };
+  }
+
+  return {
+    valid: false,
+    status: 'not_found',
+    error: data.error || data.message,
+  };
+}
+
+/**
  * Publicly verify a certificate by ID — no authentication required.
  * Uses the dedicated public endpoint GET /public/verify.
  *
@@ -92,7 +139,7 @@ export async function publicVerify(certificateId) {
   const res = await axiosInstance.get(
     `/public/verify?certificate_id=${encodeURIComponent(certificateId)}`
   );
-  return res.data;
+  return normalizePublicVerifyResponse(res.data);
 }
 
 /**

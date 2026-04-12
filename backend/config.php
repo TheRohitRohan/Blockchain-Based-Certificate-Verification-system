@@ -81,6 +81,17 @@ return [
         'default_cert_password' => env('DEFAULT_SIGNING_CERT_PASSWORD'),
         'require_signature' => env('REQUIRE_SIGNATURE'),
         'key_encryption_secret' => env('KEY_ENCRYPTION_SECRET'),
+        // Windows: set to a readable openssl.cnf (e.g. Git: C:\Program Files\Git\usr\ssl\openssl.cnf)
+        'openssl_config' => env('OPENSSL_CONF') ?: env('OPENSSL_CONFIG'),
+    ],
+    'mail' => [
+        'host'       => env('MAIL_HOST', 'smtp.gmail.com'),
+        'port'       => (int) env('MAIL_PORT', 587),
+        'username'   => env('MAIL_USERNAME'),
+        'password'   => env('MAIL_PASSWORD'),
+        'encryption' => env('MAIL_ENCRYPTION', 'tls'),
+        'from_address' => env('MAIL_FROM_ADDRESS'),
+        'from_name'    => env('MAIL_FROM_NAME', 'Certificate Verification System'),
     ]
 ];
 

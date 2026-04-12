@@ -25,7 +25,8 @@
         "endroid/qr-code": "^5.0",
         "setasign/fpdf": "^1.8",
         "setasign/fpdi-tcpdf": "^2.3",
-        "kornrunner/ethereum-offline-raw-tx": "^0.9.0"
+        "kornrunner/ethereum-offline-raw-tx": "^0.9.0",
+        "phpmailer/phpmailer": "^7.0"
     },
     "suggest": {
         "ext-gmp": "Required by kornrunner/ethereum-offline-raw-tx for real blockchain transaction signing",

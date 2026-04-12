@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router';
+import { useNavigate, Navigate, Link } from 'react-router';
 import { useAuthContext } from '../context/AuthContext';
 import { FormField, Spinner } from '../components/ui';
-import { ShieldCheck, Mail, Lock, LogIn } from 'lucide-react';
+import { ShieldCheck, LogIn } from 'lucide-react';
 
 const ROLE_HOME = { admin: '/admin', university: '/university', student: '/student' };
 
@@ -42,7 +42,9 @@ export default function LoginPage() {
 
       <div className="auth-card">
         <p className="auth-title">Sign in</p>
-        <p className="auth-sub">Enter your credentials to access your dashboard.</p>
+        <p className="auth-sub">
+          Sign in with your <strong>admin</strong>, <strong>university</strong>, or <strong>student</strong> account.
+        </p>
 
         {error && <div className="auth-error">{error}</div>}
 
@@ -76,7 +78,12 @@ export default function LoginPage() {
         </form>
 
         <p style={{ marginTop: 20, fontSize: '0.72rem', color: 'var(--text3)', textAlign: 'center' }}>
-          Default admin: admin@certificate-system.com / admin123
+          <Link to="/university/register" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+            Register your university
+          </Link>
+          <span style={{ display: 'block', marginTop: 10 }}>
+            Default admin: admin@certificate-system.com / admin123
+          </span>
         </p>
       </div>
     </div>

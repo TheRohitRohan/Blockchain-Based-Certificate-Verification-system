@@ -9,8 +9,8 @@ import toast from 'react-hot-toast';
 import { Eye, ShieldX, Download } from 'lucide-react';
 
 export default function AdminCertificates() {
-  const { certificates, fetchCertificates, revoke, isLoading } = useCertificatesContext();
-  const { universities, fetchUniversities } = useDataContext();
+  const { certificates = [], fetchCertificates, revoke, isLoading, error: certError } = useCertificatesContext();
+  const { universities = [], fetchUniversities } = useDataContext();
 
   const [search, setSearch] = useState('');
   const [filterUni, setFilterUni] = useState('');
@@ -21,7 +21,8 @@ export default function AdminCertificates() {
 
   useEffect(() => { fetchCertificates(); fetchUniversities(); }, []);
 
-  const filtered = certificates.filter(c => {
+  const filtered = (Array.isArray(certificates) ? certificates : []).filter(c => {
+    if (!c) return false; // Skip null/undefined entries
     const matchSearch = !search ||
       c.certificate_id?.toLowerCase().includes(search.toLowerCase()) ||
       c.student_name?.toLowerCase().includes(search.toLowerCase());
@@ -31,6 +32,10 @@ export default function AdminCertificates() {
   });
 
   async function handleRevoke() {
+    if (!revokeTarget) {
+      toast.error('No certificate selected');
+      return;
+    }
     setRevoking(true);
     const res = await revoke(revokeTarget.certificate_id);
     setRevoking(false);
@@ -39,6 +44,21 @@ export default function AdminCertificates() {
   }
 
   if (isLoading && certificates.length === 0) return <PageSpinner />;
+  
+  if (certError && certificates.length === 0) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <p className="page-title">Certificates</p>
+          </div>
+        </div>
+        <div style={{ padding: '20px', color: 'var(--red)', textAlign: 'center' }}>
+          Failed to load certificates: {certError}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -59,12 +59,13 @@ components:
         full_name:
           type: string
           example: John Doe
+        avatar_path:
+          type: string
+          nullable: true
+          example: storage/avatars/1.jpg
         university_id:
           type: integer
           example: 1
-        wallet_address:
-          type: string
-          example: "0x1234567890abcdef1234567890abcdef12345678"
 
     University:
       type: object
@@ -88,9 +89,6 @@ components:
         contact_phone:
           type: string
           example: "+1-617-253-1000"
-        wallet_address:
-          type: string
-          example: "0x1234567890abcdef1234567890abcdef12345678"
         is_active:
           type: boolean
           example: true
@@ -131,6 +129,9 @@ components:
           type: string
           format: date
           example: "2022-08-01"
+        is_active:
+          type: boolean
+          example: true
         created_at:
           type: string
           format: date-time
@@ -359,7 +360,7 @@ paths:
       tags:
         - Authentication
       summary: User login
-      description: Authenticate user and return JWT token
+      description: Authenticate user and return JWT token. If user has role='university', response includes additional university and admin details.
       requestBody:
         required: true
         content:
@@ -384,7 +385,45 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    $ref: '#/components/schemas/User'
+                  university:
+                    type: object
+                    nullable: true
+                    description: "Present only if user role is 'university'"
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                      address:
+                        type: string
+                  admin:
+                    type: object
+                    nullable: true
+                    description: "Present only if user role is 'university'"
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        example: university
         '401':
           description: Invalid credentials
           content:
@@ -437,6 +476,395 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
           description: Registration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Returns the authenticated user's profile (no password_hash)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Authentication
+      summary: Update user profile
+      description: Update username and/or full_name. Email, password and role changes are not allowed here.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: new.username
+                full_name:
+                  type: string
+                  example: New Full Name
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: No valid fields to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/change-password:
+    post:
+      tags:
+        - Authentication
+      summary: Change password
+      description: Change the authenticated user's password. Requires current password verification.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - current_password
+                - new_password
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                  example: OldPassword123
+                new_password:
+                  type: string
+                  format: password
+                  example: NewPassword456
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Validation error or wrong current password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset email
+      description: Send a password reset link to the given email. Always returns success to prevent user enumeration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Reset email sent (or silently ignored if email not found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Email field missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Complete password reset
+      description: Reset password using the token received by email. Token expires after 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - new_password
+              properties:
+                token:
+                  type: string
+                  example: a3f1b2c4d5e6...
+                new_password:
+                  type: string
+                  format: password
+                  example: NewSecurePass789
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid/expired token or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Logout endpoint. JWT is stateless; the frontend is responsible for deleting the token.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/profile/avatar:
+    put:
+      tags:
+        - Authentication
+      summary: Upload user avatar
+      description: Upload a profile avatar image (JPG/PNG, max 2MB). Replaces any existing avatar.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Avatar image file (JPG or PNG, max 2MB)
+      responses:
+        '200':
+          description: Avatar updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Validation error (wrong type, too large, no file)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/university/register:
+    post:
+      tags:
+        - Authentication
+      summary: University portal registration
+      description: Create a new university and register its admin account in one call
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - university_name
+                - university_email
+                - university_phone
+                - university_address
+                - admin_name
+                - admin_email
+                - admin_password
+              properties:
+                university_name:
+                  type: string
+                  example: Massachusetts Institute of Technology
+                university_code:
+                  type: string
+                  example: MIT
+                university_email:
+                  type: string
+                  format: email
+                  example: admin@mit.edu
+                university_phone:
+                  type: string
+                  example: "+1-617-253-1000"
+                university_address:
+                  type: string
+                  example: Cambridge, MA
+                admin_name:
+                  type: string
+                  example: MIT Admin
+                admin_email:
+                  type: string
+                  format: email
+                  example: portal@mit.edu
+                admin_password:
+                  type: string
+                  format: password
+                  example: SecurePass123!
+      responses:
+        '200':
+          description: University and admin created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  university_id:
+                    type: integer
+                    example: 3
+                  message:
+                    type: string
+                    example: University registered successfully
+        '400':
+          description: Validation error or university already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/verify-token:
+    post:
+      tags:
+        - Authentication
+      summary: Verify JWT token
+      description: Verify and decode a JWT token without requiring authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  user_id:
+                    type: integer
+                    example: 1
+                  email:
+                    type: string
+                    format: email
+                  role:
+                    type: string
+                    enum: [admin, university, student]
+                  university_id:
+                    type: integer
+                    nullable: true
+                  admin_name:
+                    type: string
+                    nullable: true
+                  university_name:
+                    type: string
+                    nullable: true
+                  expires_at:
+                    type: integer
+                    description: Token expiration as Unix timestamp
+        '400':
+          description: Invalid or malformed token
           content:
             application/json:
               schema:
@@ -528,7 +956,22 @@ paths:
                   students:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Student'
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
         '401':
           description: Unauthorized
           content:
@@ -670,8 +1113,12 @@ paths:
     post:
       tags:
         - Certificates
-      summary: Upload existing certificate
-      description: Upload and register an existing certificate PDF (university/admin only)
+      summary: Upload existing certificate PDF
+      description: |
+        Upload and register an existing physical/PDF certificate (university/admin only).
+        All certificate metadata comes from the form fields — nothing is read from the PDF itself.
+        The PDF is used purely as the visual document; any existing XMP metadata in it is overwritten.
+        The certificate is hashed, signed, and anchored on the blockchain identically to /certificates/create.
       security:
         - BearerAuth: []
       requestBody:
@@ -682,14 +1129,38 @@ paths:
               type: object
               required:
                 - certificate
+                - student_id
+                - course_name
+                - issue_date
               properties:
                 certificate:
                   type: string
                   format: binary
-                  description: PDF file of the certificate
+                  description: The PDF file (max 10MB, validated by MIME type)
+                student_id:
+                  type: integer
+                  description: Database row ID of the student (students.id). Must exist and belong to the issuing university.
+                  example: 1
+                university_id:
+                  type: integer
+                  description: Required for admin role only. Ignored for university role (taken from token automatically).
+                  example: 2
+                course_name:
+                  type: string
+                  description: Name of the course or program
+                  example: Advanced Computer Science
+                degree_type:
+                  type: string
+                  description: Type of degree (optional, free-text)
+                  example: Bachelor of Science
+                issue_date:
+                  type: string
+                  format: date
+                  description: Date the certificate was issued (YYYY-MM-DD)
+                  example: "2024-01-15"
       responses:
         '200':
-          description: Certificate uploaded successfully
+          description: Certificate uploaded and processed successfully
           content:
             application/json:
               schema:
@@ -697,27 +1168,48 @@ paths:
                 properties:
                   success:
                     type: boolean
+                    example: true
                   certificate_id:
+                    type: string
+                    example: CERT-ABC123XYZ
+                  certificate_hash:
+                    type: string
+                  metadata_hash:
+                    type: string
+                  pdf_hash:
                     type: string
                   tx_hash:
                     type: string
                     nullable: true
-                    description: "Null when blockchain_mode is mock"
+                    description: "'pending' when blockchain_mode is mock"
                   blockchain_mode:
                     type: string
                     enum: [live, mock]
                   signature_status:
                     type: boolean
-                  message:
+                  pdf_path:
                     type: string
+                    example: CERT-ABC123XYZ_uploaded_2026-04-05.pdf
         '400':
-          description: Upload error
+          description: Validation or processing error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+        '401':
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '403':
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1049,6 +1541,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (university can only update their own certificates)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
         - Certificates
@@ -1173,28 +1671,386 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /universities/generate-key:
-    post:
+  /students/{id}:
+    get:
       tags:
-        - Universities
-      summary: Generate university key pair
-      description: Generate cryptographic key pair for a university (admin only)
+        - Students
+      summary: Get single student details
+      description: Returns student profile. Accessible by admin, same university, or the student themselves.
       security:
         - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Student row ID
+      responses:
+        '200':
+          description: Student details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      student_id:
+                        type: string
+                      university_id:
+                        type: integer
+                      is_active:
+                        type: boolean
+                      enrollment_date:
+                        type: string
+                        format: date
+                      date_of_birth:
+                        type: string
+                        format: date
+                      full_name:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Students
+      summary: Update student profile
+      description: Update allowed fields (full_name, date_of_birth). Only admin or the student themselves.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - university_id
               properties:
-                university_id:
-                  type: integer
+                full_name:
+                  type: string
+                  example: Jane Smith
+                date_of_birth:
+                  type: string
+                  format: date
+                  example: "2000-01-15"
       responses:
         '200':
-          description: Key pair generated successfully
+          description: Student updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: No updatable fields provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Students
+      summary: Soft delete student (deactivate)
+      description: Sets is_active = FALSE. Does not delete the user or certificates. Admin only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Student deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students/{id}/certificates:
+    get:
+      tags:
+        - Students
+      summary: Get student certificates
+      description: Returns paginated certificates for a student. Accessible by admin, the student themselves, or their university.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - name: course_name
+          in: query
+          schema:
+            type: string
+        - name: issue_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: issue_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated certificate list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        university_name:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}:
+    get:
+      tags:
+        - Universities
+      summary: Get university details
+      description: Returns university information. Public access (no authentication required).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      code:
+                        type: string
+                      address:
+                        type: string
+                      contact_email:
+                        type: string
+                        format: email
+                      contact_phone:
+                        type: string
+                      is_active:
+                        type: boolean
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Universities
+      summary: Update university info
+      description: Update allowed fields (name, address, contact_email, contact_phone). Admin or the owning university.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: MIT
+                address:
+                  type: string
+                  example: Cambridge, MA
+                contact_email:
+                  type: string
+                  format: email
+                  example: admin@mit.edu
+                contact_phone:
+                  type: string
+                  example: "+1-617-253-1000"
+      responses:
+        '200':
+          description: University updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: No updatable fields provided or no changes detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Universities
+      summary: Soft delete university (deactivate)
+      description: Sets is_active = FALSE. Admin only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University deactivated
           content:
             application/json:
               schema:
@@ -1207,6 +2063,263 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/students:
+    get:
+      tags:
+        - Universities
+      summary: List students in a university
+      description: Returns paginated students for a university. Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: enrollment_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: enrollment_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated student list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        student_id:
+                          type: string
+                        enrollment_date:
+                          type: string
+                          format: date
+                        is_active:
+                          type: boolean
+                        full_name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/certificates:
+    get:
+      tags:
+        - Universities
+      summary: List certificates issued by a university
+      description: Returns paginated certificates for a university. Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, revoked, expired]
+        - name: course_name
+          in: query
+          schema:
+            type: string
+        - name: issue_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: issue_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Paginated certificate list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: string
+                        course_name:
+                          type: string
+                        degree_type:
+                          type: string
+                        issue_date:
+                          type: string
+                          format: date
+                        status:
+                          type: string
+                          enum: [active, revoked, expired]
+                        student_name:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+        '404':
+          description: University not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /universities/{id}/stats:
+    get:
+      tags:
+        - Universities
+      summary: Get university statistics
+      description: Returns aggregate stats (students, certificates). Admin or that university only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: University statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      total_students:
+                        type: integer
+                        example: 150
+                      active_students:
+                        type: integer
+                        example: 140
+                      total_certificates:
+                        type: integer
+                        example: 300
+                      active_certificates:
+                        type: integer
+                        example: 290
+                      revoked_certificates:
+                        type: integer
+                        example: 10
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: University not found
           content:
             application/json:
               schema:

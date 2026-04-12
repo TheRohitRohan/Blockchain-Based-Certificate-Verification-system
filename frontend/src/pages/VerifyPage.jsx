@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { publicVerify, getPublicDownloadUrl } from '../api/certificates.api';
 import { Spinner, FormField } from '../components/ui';
@@ -6,37 +6,48 @@ import toast from 'react-hot-toast';
 import { ShieldCheck, ShieldX, AlertTriangle, Download, Share2, Search } from 'lucide-react';
 
 const STATUS_META = {
-  valid:     { Icon: ShieldCheck, label: 'VERIFIED',   cls: 'valid' },
-  revoked:   { Icon: ShieldX,    label: 'REVOKED',    cls: 'revoked' },
+  valid:     { Icon: ShieldCheck, label: 'VERIFIED',     cls: 'valid' },
+  revoked:   { Icon: ShieldX,    label: 'REVOKED',      cls: 'revoked' },
+  invalid:   { Icon: AlertTriangle, label: 'NOT VERIFIED', cls: 'invalid' },
   not_found: { Icon: AlertTriangle, label: 'NOT FOUND', cls: 'not_found' },
 };
 
 export default function VerifyPage() {
   const [searchParams] = useSearchParams();
-  const [certId, setCertId] = useState(searchParams.get('cert') ?? '');
+  const certFromUrl = searchParams.get('cert')?.trim() ?? '';
+  const [certId, setCertId] = useState(() => certFromUrl || '');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const fileRef = useRef(null);
 
-  async function handleVerify(e) {
-    e?.preventDefault();
-    if (!certId.trim()) { toast.error('Enter a certificate ID'); return; }
+  async function verifyById(rawId, { silent } = {}) {
+    const id = (rawId ?? '').trim();
+    if (!id) {
+      if (!silent) toast.error('Enter a certificate ID');
+      return;
+    }
     setLoading(true);
     setResult(null);
     try {
-      const data = await publicVerify(certId.trim());
+      const data = await publicVerify(id);
       setResult(data);
     } catch {
-      // fallback: API may return 404 as error
       setResult({ valid: false, status: 'not_found' });
     }
     setLoading(false);
   }
 
-  // auto-verify if cert param in URL
-  useState(() => {
-    if (certId) handleVerify();
-  }, []);
+  function handleVerify(e) {
+    e?.preventDefault();
+    verifyById(certId);
+  }
+
+  // Auto-verify when opening /verify?cert=... (depend on string, not URLSearchParams identity)
+  useEffect(() => {
+    if (!certFromUrl) return;
+    setCertId(certFromUrl);
+    verifyById(certFromUrl, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certFromUrl]);
 
   const cert = result?.certificate;
   const meta = STATUS_META[result?.status] ?? STATUS_META.not_found;
