@@ -45,7 +45,7 @@ export default function Navbar() {
 
         {/* Nav links */}
         <nav className="hidden md:flex items-center gap-8">
-          {['How it works', 'Security', 'Protocol'].map(link => (
+          {['How it works', 'Security', 'Stats'].map(link => (
             <a
               key={link}
               href={`#${link.toLowerCase().replace(/\s+/g, '-')}`}
@@ -81,7 +81,7 @@ export default function Navbar() {
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
           
-          <a href="#login" className="btn btn-white text-sm py-2 px-5" style={{ fontWeight: 500 }}>
+          <a href="/login" className="btn btn-white text-sm py-2 px-5" style={{ fontWeight: 500 }}>
             Get started
           </a>
         </div>
