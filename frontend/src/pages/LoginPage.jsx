@@ -71,6 +71,15 @@ export default function LoginPage() {
             />
           </FormField>
 
+          <div style={{ textAlign: 'right', marginTop: -6 }}>
+            <Link
+              to="/forgot-password"
+              style={{ fontSize: '0.72rem', color: 'var(--text3)', textDecoration: 'none' }}
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
             {loading ? <Spinner size={14} /> : <LogIn size={14} />}
             {loading ? 'Signing in…' : 'Sign in'}

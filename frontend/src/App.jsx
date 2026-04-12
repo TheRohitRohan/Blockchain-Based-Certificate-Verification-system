@@ -12,6 +12,8 @@ import AuthLayout from './layouts/AuthLayout';
 
 // Public pages
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import VerifyPage from './pages/VerifyPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -58,6 +60,8 @@ export default function App() {
 
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/university/login" element={<UniversityLogin />} />
         <Route path="/university/register" element={<UniversityRegister />} />
         <Route path="/verify" element={<VerifyPage />} />

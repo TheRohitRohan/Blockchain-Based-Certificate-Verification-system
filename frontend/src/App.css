@@ -500,6 +500,15 @@
   color: var(--red); font-size: 0.78rem;
   margin-bottom: 16px;
 }
+.forgot-success-icon {
+  display: flex; justify-content: center; margin-bottom: 16px;
+  color: var(--green);
+}
+.forgot-resend-btn {
+  background: none; border: none; color: var(--accent);
+  font-size: inherit; cursor: pointer; text-decoration: underline;
+  padding: 0; font-family: inherit;
+}
 
 /* ── Verify Page ───────────────────────────────────────────── */
 .verify-shell {

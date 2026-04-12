@@ -29,6 +29,31 @@ export async function register(data) {
   return res.data;
 }
 
+/**
+ * Request a password-reset email for the given address.
+ * Always returns success (prevents user enumeration).
+ * @param {string} email
+ * @returns {{ success: boolean, message: string }}
+ */
+export async function forgotPassword(email) {
+  const res = await axiosInstance.post('/auth/forgot-password', { email });
+  return res.data;
+}
+
+/**
+ * Reset a user's password using an email token.
+ * @param {string} token  — reset token from the email link
+ * @param {string} newPassword
+ * @returns {{ success: boolean, message: string }}
+ */
+export async function resetPassword(token, newPassword) {
+  const res = await axiosInstance.post('/auth/reset-password', {
+    token,
+    new_password: newPassword,
+  });
+  return res.data;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  University management
 //
