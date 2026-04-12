@@ -217,6 +217,98 @@ Increases user engagement and personalization. Currently, the UI relies complete
 
 ---
 
+## 5. Public Certificate Verification via Upload
+**Why we need it:**
+Allow anyone (employers, institutions, etc.) to verify the authenticity of a certificate without needing to log in. This is a critical feature for the system's credibility — users can upload a certificate PDF and instantly check if it's legitimate, unrevoked, and anchored on the blockchain.
+
+### Upload Certificate for Verification
+**What it does:** Accepts a certificate PDF file, extracts certificate metadata, and verifies it against the blockchain. Returns comprehensive verification details including student info, issuing university, blockchain status, and authenticity confirmation.
+* **Endpoint:** `POST /verify/upload`
+* **Authentication:** **None** (Public)
+* **Headers:** `Content-Type: multipart/form-data`
+* **Request Body (Form Data):**
+  * `certificate`: *(File)* The certificate `.pdf` file to verify (max 10MB, must be a valid PDF).
+* **Response (Success - 200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Certificate verified successfully",
+    "data": {
+      "certificate_id": "CERT-ABC123XYZ",
+      "certificate_hash": "0x1a2b3c4d...",
+      "student_name": "John Doe",
+      "student_id": "STU-12345",
+      "university_name": "University of Excellence",
+      "course_name": "Bachelor of Science in Computer Science",
+      "degree_type": "Bachelor",
+      "issue_date": "2026-04-05",
+      "blockchain_status": "verified",
+      "tx_hash": "0xblockchain_tx_hash",
+      "is_revoked": false,
+      "signature_valid": true,
+      "blockchain_mode": "live",
+      "verification_timestamp": "2026-04-12T10:30:45Z"
+    }
+  }
+  ```
+  > **Blockchain Status:** Can be one of:
+  > - `verified` — Certificate found on blockchain and all hashes match
+  > - `pending` — Certificate exists but transaction is still pending
+  > - `not_found` — Certificate hash not found on blockchain
+  > - `revoked` — Certificate was explicitly revoked by issuer
+
+* **Response (Error - 400 Bad Request):**
+  ```json
+  {
+    "success": false,
+    "error": "No file uploaded"
+    // or: "File too large. Maximum allowed size is 10MB."
+    // or: "Only PDF files are allowed"
+    // or: "Could not extract certificate data from PDF"
+    // or: "Invalid certificate format"
+  }
+  ```
+
+### Verify Certificate by ID
+**What it does:** Verify a certificate using its unique certificate ID (for cases where the user knows the ID but doesn't have the PDF). Returns all verification details without file upload.
+* **Endpoint:** `GET /verify/certificate/{certificate_id}`
+* **Authentication:** **None** (Public)
+* **Headers:** `Content-Type: application/json`
+* **URL Parameters:**
+  * `certificate_id`: *(String)* The unique certificate ID (e.g., `CERT-ABC123XYZ`)
+* **Response (Success - 200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Certificate verified",
+    "data": {
+      "certificate_id": "CERT-ABC123XYZ",
+      "certificate_hash": "0x1a2b3c4d...",
+      "student_name": "John Doe",
+      "student_id": "STU-12345",
+      "university_name": "University of Excellence",
+      "course_name": "Bachelor of Science in Computer Science",
+      "degree_type": "Bachelor",
+      "issue_date": "2026-04-05",
+      "blockchain_status": "verified",
+      "tx_hash": "0xblockchain_tx_hash",
+      "is_revoked": false,
+      "signature_valid": true,
+      "blockchain_mode": "live",
+      "verification_timestamp": "2026-04-12T10:30:45Z"
+    }
+  }
+  ```
+* **Response (Error - 404 Not Found):**
+  ```json
+  {
+    "success": false,
+    "error": "Certificate not found"
+  }
+  ```
+
+---
+
 ## Implementation To-Do List
 
 - [ ] Implement `ForgotPasswordPage.jsx` — form to submit email and dispatch reset request to `POST /auth/forgot-password`.
@@ -229,3 +321,11 @@ Increases user engagement and personalization. Currently, the UI relies complete
 - [x] Certificate delete endpoint implemented (`DELETE /certificates/delete`)
 - [ ] Add a `Delete` action in the `AdminCertificates` table (visible to `admin` role **only**, completely hidden for `university` role) to call the delete endpoint.
 - [ ] Build an overlay image uploader on the avatar circle component in `ProfilePage.jsx`. On click, open a file picker filtered to JPG/PNG, then `PUT` to `/auth/profile/avatar`. After success, update the displayed avatar using the `avatar_path` from the response prepended with the API base URL.
+- [ ] Create a public `VerificationPage.jsx` accessible without authentication at `/verify`. Include two tabs or sections:
+  - **Upload Verification:** File uploader for PDF certificates that calls `POST /verify/upload`. Display verification results in a detailed card showing student name, university, course, blockchain status, revocation status, and signature validity.
+  - **ID Lookup:** Text input for certificate ID that calls `GET /verify/certificate/{certificate_id}`. Display same verification details.
+- [ ] Style the verification results UI to clearly indicate:
+  - **Green checkmark** for `blockchain_status: "verified"` and `is_revoked: false`
+  - **Yellow warning** for `blockchain_status: "pending"`
+  - **Red X** for `blockchain_status: "not_found"` or `is_revoked: true`
+- [ ] Ensure auth guards do **not** redirect unauthenticated users away from the verification page.
