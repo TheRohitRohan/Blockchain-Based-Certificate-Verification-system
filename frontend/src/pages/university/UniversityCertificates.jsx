@@ -1,19 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useCertificatesContext } from '../../context/CertificatesContext';
-import { PageSpinner, EmptyState, Modal, ConfirmModal, Badge } from '../../components/ui';
+import { useDataContext } from '../../context/DataContext';
+import { useAuthContext } from '../../context/AuthContext';
+import { PageSpinner, EmptyState, Modal, ConfirmModal, Badge, FormField, Spinner } from '../../components/ui';
 import { getCertificateDownloadUrl } from '../../api/certificates.api';
 import toast from 'react-hot-toast';
-import { Eye, ShieldX, Download } from 'lucide-react';
+import { Eye, ShieldX, Download, Upload, FileUp, X } from 'lucide-react';
+
+const DEGREE_TYPES = ['Bachelor', 'Master', 'Doctor', 'Diploma', 'Certificate', 'Associate'];
 
 export default function UniversityCertificates() {
-  const { certificates, fetchCertificates, revoke, isLoading } = useCertificatesContext();
+  const { certificates, fetchCertificates, revoke, uploadCert, isLoading } = useCertificatesContext();
+  const { students, fetchStudents } = useDataContext();
+  const { user } = useAuthContext();
+
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [detailTarget, setDetailTarget] = useState(null);
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
 
+  // Upload modal state
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    student_id: '', course_name: '', degree_type: '', issue_date: '',
+  });
+  const [uploadFile, setUploadFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const setField = (k) => (e) => setUploadForm((f) => ({ ...f, [k]: e.target.value }));
+
   useEffect(() => { fetchCertificates(); }, []);
+
+  // Fetch students when upload modal opens
+  useEffect(() => {
+    if (showUpload) fetchStudents();
+  }, [showUpload]);
 
   const filtered = certificates.filter(c => {
     const matchSearch = !search ||
@@ -31,6 +54,58 @@ export default function UniversityCertificates() {
     else toast.error(res.error ?? 'Revoke failed');
   }
 
+  function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are allowed');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size exceeds 10MB limit');
+      e.target.value = '';
+      return;
+    }
+    setUploadFile(file);
+  }
+
+  function clearFile() {
+    setUploadFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function resetUploadForm() {
+    setUploadForm({ student_id: '', course_name: '', degree_type: '', issue_date: '' });
+    setUploadFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleUploadSubmit(e) {
+    e.preventDefault();
+    if (!uploadFile) { toast.error('Please select a PDF file'); return; }
+    if (!uploadForm.student_id || !uploadForm.course_name || !uploadForm.issue_date) {
+      toast.error('Student, course name, and issue date are required');
+      return;
+    }
+    setUploading(true);
+    const res = await uploadCert({
+      certificate: uploadFile,
+      student_id: parseInt(uploadForm.student_id),
+      course_name: uploadForm.course_name,
+      degree_type: uploadForm.degree_type || undefined,
+      issue_date: uploadForm.issue_date,
+    });
+    setUploading(false);
+    if (res.success) {
+      toast.success(`Certificate uploaded: ${res.certificate_id}`);
+      setShowUpload(false);
+      resetUploadForm();
+    } else {
+      toast.error(res.error ?? 'Upload failed');
+    }
+  }
+
   if (isLoading && certificates.length === 0) return <PageSpinner />;
 
   return (
@@ -40,6 +115,9 @@ export default function UniversityCertificates() {
           <p className="page-title">Issued Certificates</p>
           <p className="page-sub">{certificates.length} certificates issued</p>
         </div>
+        <button className="btn-primary" onClick={() => setShowUpload(true)}>
+          <Upload size={14} /> Upload Certificate
+        </button>
       </div>
 
       <div className="filter-bar">
@@ -112,6 +190,94 @@ export default function UniversityCertificates() {
           onConfirm={handleRevoke}
           onCancel={() => setRevokeTarget(null)}
         />
+      )}
+
+      {/* ── Upload Certificate Modal ─────────────────────────── */}
+      {showUpload && (
+        <Modal
+          title="Upload Existing Certificate"
+          onClose={() => { setShowUpload(false); resetUploadForm(); }}
+          footer={
+            <>
+              <button className="btn-ghost-sm" onClick={() => { setShowUpload(false); resetUploadForm(); }}>Cancel</button>
+              <button
+                className="btn-primary"
+                disabled={uploading}
+                onClick={handleUploadSubmit}
+              >
+                {uploading ? <><Spinner size={12} /> Uploading…</> : <><FileUp size={12} /> Upload & Anchor</>}
+              </button>
+            </>
+          }
+        >
+          <form onSubmit={handleUploadSubmit} className="form-grid">
+            {/* PDF File */}
+            <FormField label="Certificate PDF" required>
+              <div className="upload-file-zone">
+                {uploadFile ? (
+                  <div className="upload-file-selected">
+                    <span className="upload-file-name">{uploadFile.name}</span>
+                    <span className="upload-file-size">({(uploadFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    <button type="button" className="btn-icon" onClick={clearFile} title="Remove file"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <label className="upload-file-label">
+                    <Upload size={18} style={{ opacity: 0.5 }} />
+                    <span>Click to select a PDF file</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>Max 10MB • PDF only</span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={handleFileChange}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                )}
+              </div>
+            </FormField>
+
+            {/* Student */}
+            <FormField label="Student" required>
+              <select className="form-select" value={uploadForm.student_id} onChange={setField('student_id')} disabled={uploading}>
+                <option value="">Select student…</option>
+                {students.map(s => (
+                  <option key={s.id} value={s.id}>{s.full_name} ({s.student_id})</option>
+                ))}
+              </select>
+            </FormField>
+
+            {/* Course Name */}
+            <FormField label="Course Name" required>
+              <input
+                className="form-input"
+                value={uploadForm.course_name}
+                onChange={setField('course_name')}
+                placeholder="e.g. Computer Science"
+                disabled={uploading}
+              />
+            </FormField>
+
+            {/* Degree Type (optional) */}
+            <FormField label="Degree Type">
+              <select className="form-select" value={uploadForm.degree_type} onChange={setField('degree_type')} disabled={uploading}>
+                <option value="">Select degree (optional)…</option>
+                {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </FormField>
+
+            {/* Issue Date */}
+            <FormField label="Issue Date" required>
+              <input
+                type="date"
+                className="form-input"
+                value={uploadForm.issue_date}
+                onChange={setField('issue_date')}
+                disabled={uploading}
+              />
+            </FormField>
+          </form>
+        </Modal>
       )}
     </div>
   );

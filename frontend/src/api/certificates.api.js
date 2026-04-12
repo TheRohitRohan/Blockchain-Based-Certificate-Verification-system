@@ -43,6 +43,36 @@ export async function createCertificate(data) {
 }
 
 /**
+ * Upload an existing PDF certificate.
+ * Sends multipart/form-data with the PDF file + metadata fields.
+ *
+ * @param {{
+ *   certificate: File,        // the PDF file
+ *   student_id: number,
+ *   university_id?: number,   // required for admin role only
+ *   course_name: string,
+ *   degree_type?: string,
+ *   issue_date: string        // YYYY-MM-DD
+ * }} fields
+ * @returns {{ success: boolean, certificate_id: string, ... }}
+ */
+export async function uploadCertificate(fields) {
+  const formData = new FormData();
+  formData.append('certificate', fields.certificate);
+  formData.append('student_id', fields.student_id);
+  formData.append('course_name', fields.course_name);
+  formData.append('issue_date', fields.issue_date);
+  if (fields.degree_type) formData.append('degree_type', fields.degree_type);
+  if (fields.university_id) formData.append('university_id', fields.university_id);
+
+  const res = await axiosInstance.post('/certificates/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  });
+  return res.data;
+}
+
+/**
  * Publicly verify a certificate by ID (and optionally its hash).
  * No authentication required — works for any visitor.
  *

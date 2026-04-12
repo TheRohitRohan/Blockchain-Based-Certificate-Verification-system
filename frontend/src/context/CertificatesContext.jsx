@@ -7,6 +7,7 @@ import React, {
 import {
   listCertificates,
   createCertificate,
+  uploadCertificate,
   verifyCertificate,
   revokeCertificate,
   getCertificateDownloadUrl,
@@ -122,6 +123,24 @@ export function CertificatesProvider({ children }) {
     }
   }, [fetchCertificates]);
 
+  // ── Upload existing certificate ─────────────────────────
+  const uploadCert = useCallback(async (fields) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const result = await uploadCertificate(fields);
+      if (result.success) {
+        await fetchCertificates();
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: result.error ?? 'Failed to upload certificate' });
+      }
+      return result;
+    } catch (err) {
+      const msg = err.response?.data?.error ?? err.message ?? 'Failed to upload certificate';
+      dispatch({ type: 'SET_ERROR', payload: msg });
+      return { success: false, error: msg };
+    }
+  }, [fetchCertificates]);
+
   // ── Clear verify result ─────────────────────────────────
   const clearVerifyResult = useCallback(() => {
     dispatch({ type: 'CLEAR_VERIFY' });
@@ -141,6 +160,7 @@ export function CertificatesProvider({ children }) {
     // Actions
     fetchCertificates,
     issueCertificate,
+    uploadCert,
     verify,
     revoke,
     clearVerifyResult,

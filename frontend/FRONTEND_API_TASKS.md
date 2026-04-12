@@ -223,7 +223,7 @@ Increases user engagement and personalization. Currently, the UI relies complete
 - [x] Implement `ResetPasswordPage.jsx` — reads `token` from the URL query parameter (`?token=...`), form to submit new password to `POST /auth/reset-password`. Show a specific message when error is `"Reset token has expired"`.
 - [x] Ensure auth guards do **not** redirect unauthenticated users away from the password reset pages.
 - [x] Certificate upload endpoint implemented (`POST /certificates/upload`)
-- [ ] Create an "Upload Existing Certificate" button and modal inside `UniversityCertificates.jsx` / `AdminCertificates.jsx`. The modal must collect: `student_id`, `course_name`, `issue_date`, optionally `degree_type`, and the PDF file. Admin modal must also collect `university_id`.
+- [x] Create an "Upload Existing Certificate" button and modal inside `UniversityCertificates.jsx` / `AdminCertificates.jsx`. The modal must collect: `student_id`, `course_name`, `issue_date`, optionally `degree_type`, and the PDF file. Admin modal must also collect `university_id`.
 - [x] Certificate update endpoint implemented (`PUT /certificates/update`)
 - [ ] Add an `Edit` action and modal in certificate tables (available to both `university` and `admin` roles) to update `course_name`, `degree_type`, and/or `issue_date` via the update endpoint.
 - [x] Certificate delete endpoint implemented (`DELETE /certificates/delete`)

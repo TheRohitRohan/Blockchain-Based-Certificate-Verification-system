@@ -510,6 +510,35 @@
   padding: 0; font-family: inherit;
 }
 
+/* ── Upload File Zone ─────────────────────────────────────── */
+.upload-file-zone {
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  transition: border-color var(--transition);
+}
+.upload-file-zone:hover {
+  border-color: var(--text3);
+}
+.upload-file-label {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; padding: 24px 16px;
+  cursor: pointer; color: var(--text2); font-size: 0.78rem;
+  text-align: center;
+}
+.upload-file-selected {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; font-size: 0.78rem;
+}
+.upload-file-name {
+  color: var(--text); font-weight: 500;
+  white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 260px;
+}
+.upload-file-size {
+  color: var(--text3); font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
 /* ── Verify Page ───────────────────────────────────────────── */
 .verify-shell {
   min-height: 100vh; background: var(--bg);
