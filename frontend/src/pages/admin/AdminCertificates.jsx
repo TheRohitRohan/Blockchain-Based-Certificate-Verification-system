@@ -6,12 +6,15 @@ import {
 } from '../../components/ui';
 import { getCertificateDownloadUrl } from '../../api/certificates.api';
 import toast from 'react-hot-toast';
-import { Eye, ShieldX, Download, Upload, FileUp, X } from 'lucide-react';
+import { Eye, ShieldX, Download, Upload, FileUp, X, Pencil, Trash2 } from 'lucide-react';
 
 const DEGREE_TYPES = ['Bachelor', 'Master', 'Doctor', 'Diploma', 'Certificate', 'Associate'];
 
 export default function AdminCertificates() {
-  const { certificates = [], fetchCertificates, revoke, uploadCert, isLoading, error: certError } = useCertificatesContext();
+  const {
+    certificates = [], fetchCertificates, revoke, uploadCert,
+    updateCert, deleteCert, isLoading, error: certError,
+  } = useCertificatesContext();
   const { universities = [], students = [], fetchUniversities, fetchStudents } = useDataContext();
 
   const [search, setSearch] = useState('');
@@ -30,22 +33,30 @@ export default function AdminCertificates() {
   const [uploadFile, setUploadFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({ course_name: '', degree_type: '', issue_date: '' });
+  const [editing, setEditing] = useState(false);
+
+  // Delete modal state
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const setField = (k) => (e) => setUploadForm((f) => ({ ...f, [k]: e.target.value }));
+  const setEditField = (k) => (e) => setEditForm((f) => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => { fetchCertificates(); fetchUniversities(); }, []);
 
-  // Fetch students when upload modal opens
   useEffect(() => {
     if (showUpload) fetchStudents();
   }, [showUpload]);
 
-  // Filter students by selected university in the upload form
   const filteredStudentsForUpload = uploadForm.university_id
     ? students.filter(s => String(s.university_id) === String(uploadForm.university_id))
     : students;
 
   const filtered = (Array.isArray(certificates) ? certificates : []).filter(c => {
-    if (!c) return false; // Skip null/undefined entries
+    if (!c) return false;
     const matchSearch = !search ||
       c.certificate_id?.toLowerCase().includes(search.toLowerCase()) ||
       c.student_name?.toLowerCase().includes(search.toLowerCase());
@@ -54,11 +65,9 @@ export default function AdminCertificates() {
     return matchSearch && matchUni && matchStatus;
   });
 
+  // ── Revoke ──────────────────────────────────────────────────
   async function handleRevoke() {
-    if (!revokeTarget) {
-      toast.error('No certificate selected');
-      return;
-    }
+    if (!revokeTarget) { toast.error('No certificate selected'); return; }
     setRevoking(true);
     const res = await revoke(revokeTarget.certificate_id);
     setRevoking(false);
@@ -66,19 +75,61 @@ export default function AdminCertificates() {
     else toast.error(res.error ?? 'Revoke failed');
   }
 
+  // ── Edit ────────────────────────────────────────────────────
+  function openEdit(cert) {
+    setEditTarget(cert);
+    setEditForm({
+      course_name: cert.course_name ?? '',
+      degree_type: cert.degree_type ?? '',
+      issue_date: cert.issue_date ?? '',
+    });
+  }
+
+  async function handleEditSubmit(e) {
+    e.preventDefault();
+    if (!editTarget) return;
+    const changes = {};
+    if (editForm.course_name && editForm.course_name !== editTarget.course_name) changes.course_name = editForm.course_name;
+    if (editForm.degree_type !== editTarget.degree_type) changes.degree_type = editForm.degree_type;
+    if (editForm.issue_date && editForm.issue_date !== editTarget.issue_date) changes.issue_date = editForm.issue_date;
+
+    if (Object.keys(changes).length === 0) {
+      toast.error('No changes to save');
+      return;
+    }
+    setEditing(true);
+    const res = await updateCert(editTarget.certificate_id, changes);
+    setEditing(false);
+    if (res.success) {
+      toast.success('Certificate updated');
+      setEditTarget(null);
+      setDetailTarget(null);
+    } else {
+      toast.error(res.error ?? 'Update failed');
+    }
+  }
+
+  // ── Delete ──────────────────────────────────────────────────
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await deleteCert(deleteTarget.certificate_id);
+    setDeleting(false);
+    if (res.success) {
+      toast.success('Certificate deleted');
+      setDeleteTarget(null);
+      setDetailTarget(null);
+    } else {
+      toast.error(res.error ?? 'Delete failed');
+    }
+  }
+
+  // ── Upload ──────────────────────────────────────────────────
   function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.type !== 'application/pdf') {
-      toast.error('Only PDF files are allowed');
-      e.target.value = '';
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size exceeds 10MB limit');
-      e.target.value = '';
-      return;
-    }
+    if (file.type !== 'application/pdf') { toast.error('Only PDF files are allowed'); e.target.value = ''; return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('File size exceeds 10MB limit'); e.target.value = ''; return; }
     setUploadFile(file);
   }
 
@@ -121,15 +172,11 @@ export default function AdminCertificates() {
   }
 
   if (isLoading && certificates.length === 0) return <PageSpinner />;
-  
+
   if (certError && certificates.length === 0) {
     return (
       <div>
-        <div className="page-header">
-          <div>
-            <p className="page-title">Certificates</p>
-          </div>
-        </div>
+        <div className="page-header"><div><p className="page-title">Certificates</p></div></div>
         <div style={{ padding: '20px', color: 'var(--red)', textAlign: 'center' }}>
           Failed to load certificates: {certError}
         </div>
@@ -150,12 +197,7 @@ export default function AdminCertificates() {
       </div>
 
       <div className="filter-bar">
-        <input
-          className="form-input"
-          placeholder="Search by ID or student…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <input className="form-input" placeholder="Search by ID or student…" value={search} onChange={e => setSearch(e.target.value)} />
         <select className="form-select" value={filterUni} onChange={e => setFilterUni(e.target.value)}>
           <option value="">All Universities</option>
           {universities.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
@@ -180,8 +222,8 @@ export default function AdminCertificates() {
             </thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.certificate_id ?? c.id}>
-                  <td className="mono-id">{c.certificate_id}</td>
+                <tr key={c?.certificate_id ?? c?.id}>
+                  <td className="mono-id">{c?.certificate_id}</td>
                   <td>{c.student_name ?? '—'}</td>
                   <td>{c.university_name ?? '—'}</td>
                   <td>{c.course_name}</td>
@@ -191,8 +233,13 @@ export default function AdminCertificates() {
                     <span style={{ display: 'flex', gap: 4 }}>
                       <button className="btn-icon" title="View" onClick={() => setDetailTarget(c)}><Eye size={13} /></button>
                       {c.status === 'active' && (
+                        <button className="btn-icon" title="Edit" onClick={() => openEdit(c)}><Pencil size={13} /></button>
+                      )}
+                      {c.status === 'active' && (
                         <button className="btn-icon" title="Revoke" style={{ color: 'var(--red)' }} onClick={() => setRevokeTarget(c)}><ShieldX size={13} /></button>
                       )}
+                      {/* Delete — admin only (this page is already admin-only) */}
+                      <button className="btn-icon" title="Delete" style={{ color: 'var(--red)' }} onClick={() => setDeleteTarget(c)}><Trash2 size={13} /></button>
                     </span>
                   </td>
                 </tr>
@@ -209,10 +256,14 @@ export default function AdminCertificates() {
           onClose={() => setDetailTarget(null)}
           footer={
             <>
-              <a className="btn-ghost-sm" href={getCertificateDownloadUrl(detailTarget.certificate_id)} target="_blank" rel="noreferrer"><Download size={12} /> PDF</a>
+              <a className="btn-ghost-sm" href={getCertificateDownloadUrl(detailTarget?.certificate_id)} target="_blank" rel="noreferrer"><Download size={12} /> PDF</a>
               {detailTarget.status === 'active' && (
-                <button className="btn-danger-sm" onClick={() => { setRevokeTarget(detailTarget); }}>Revoke</button>
+                <button className="btn-ghost-sm" onClick={() => openEdit(detailTarget)}>Edit</button>
               )}
+              {detailTarget.status === 'active' && (
+                <button className="btn-danger-sm" onClick={() => setRevokeTarget(detailTarget)}>Revoke</button>
+              )}
+              <button className="btn-danger-sm" onClick={() => setDeleteTarget(detailTarget)}>Delete</button>
               <button className="btn-ghost-sm" onClick={() => setDetailTarget(null)}>Close</button>
             </>
           }
@@ -242,12 +293,58 @@ export default function AdminCertificates() {
       {revokeTarget && (
         <ConfirmModal
           title="Revoke Certificate"
-          message={`Revoke certificate ${revokeTarget.certificate_id}? This action cannot be undone.`}
+          message={`Revoke certificate ${revokeTarget?.certificate_id}? This action cannot be undone.`}
           confirmLabel={revoking ? 'Revoking…' : 'Revoke Certificate'}
           danger
           onConfirm={handleRevoke}
           onCancel={() => setRevokeTarget(null)}
         />
+      )}
+
+      {/* Delete Modal — admin only */}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete Certificate"
+          message={`Permanently delete certificate ${deleteTarget?.certificate_id}? This removes it from the database entirely and cannot be undone. This does NOT revoke it on the blockchain.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Delete Certificate'}
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* ── Edit Certificate Modal ───────────────────────────── */}
+      {editTarget && (
+        <Modal
+          title="Edit Certificate"
+          onClose={() => setEditTarget(null)}
+          footer={
+            <>
+              <button className="btn-ghost-sm" onClick={() => setEditTarget(null)}>Cancel</button>
+              <button className="btn-primary" disabled={editing} onClick={handleEditSubmit}>
+                {editing ? <><Spinner size={12} /> Saving…</> : 'Save Changes'}
+              </button>
+            </>
+          }
+        >
+          <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: 16 }}>
+            Editing <strong style={{ color: 'var(--text)' }}>{editTarget?.certificate_id}</strong> — {editTarget?.student_name}
+          </p>
+          <form onSubmit={handleEditSubmit} className="form-grid">
+            <FormField label="Course Name">
+              <input className="form-input" value={editForm.course_name} onChange={setEditField('course_name')} disabled={editing} />
+            </FormField>
+            <FormField label="Degree Type">
+              <select className="form-select" value={editForm.degree_type} onChange={setEditField('degree_type')} disabled={editing}>
+                <option value="">None</option>
+                {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Issue Date">
+              <input type="date" className="form-input" value={editForm.issue_date} onChange={setEditField('issue_date')} disabled={editing} />
+            </FormField>
+          </form>
+        </Modal>
       )}
 
       {/* ── Upload Certificate Modal ─────────────────────────── */}
@@ -258,18 +355,13 @@ export default function AdminCertificates() {
           footer={
             <>
               <button className="btn-ghost-sm" onClick={() => { setShowUpload(false); resetUploadForm(); }}>Cancel</button>
-              <button
-                className="btn-primary"
-                disabled={uploading}
-                onClick={handleUploadSubmit}
-              >
+              <button className="btn-primary" disabled={uploading} onClick={handleUploadSubmit}>
                 {uploading ? <><Spinner size={12} /> Uploading…</> : <><FileUp size={12} /> Upload & Anchor</>}
               </button>
             </>
           }
         >
           <form onSubmit={handleUploadSubmit} className="form-grid">
-            {/* PDF File */}
             <FormField label="Certificate PDF" required>
               <div className="upload-file-zone">
                 {uploadFile ? (
@@ -283,73 +375,34 @@ export default function AdminCertificates() {
                     <Upload size={18} style={{ opacity: 0.5 }} />
                     <span>Click to select a PDF file</span>
                     <span style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>Max 10MB • PDF only</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={handleFileChange}
-                      style={{ display: 'none' }}
-                    />
+                    <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" onChange={handleFileChange} style={{ display: 'none' }} />
                   </label>
                 )}
               </div>
             </FormField>
-
-            {/* University (admin-only field) */}
             <FormField label="University" required>
-              <select
-                className="form-select"
-                value={uploadForm.university_id}
-                onChange={(e) => {
-                  setUploadForm(f => ({ ...f, university_id: e.target.value, student_id: '' }));
-                }}
-                disabled={uploading}
-              >
+              <select className="form-select" value={uploadForm.university_id} onChange={(e) => setUploadForm(f => ({ ...f, university_id: e.target.value, student_id: '' }))} disabled={uploading}>
                 <option value="">Select university…</option>
-                {universities.map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
+                {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </FormField>
-
-            {/* Student */}
             <FormField label="Student" required>
               <select className="form-select" value={uploadForm.student_id} onChange={setField('student_id')} disabled={uploading || !uploadForm.university_id}>
                 <option value="">{uploadForm.university_id ? 'Select student…' : 'Select a university first'}</option>
-                {filteredStudentsForUpload.map(s => (
-                  <option key={s.id} value={s.id}>{s.full_name} ({s.student_id})</option>
-                ))}
+                {filteredStudentsForUpload.map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.student_id})</option>)}
               </select>
             </FormField>
-
-            {/* Course Name */}
             <FormField label="Course Name" required>
-              <input
-                className="form-input"
-                value={uploadForm.course_name}
-                onChange={setField('course_name')}
-                placeholder="e.g. Computer Science"
-                disabled={uploading}
-              />
+              <input className="form-input" value={uploadForm.course_name} onChange={setField('course_name')} placeholder="e.g. Computer Science" disabled={uploading} />
             </FormField>
-
-            {/* Degree Type (optional) */}
             <FormField label="Degree Type">
               <select className="form-select" value={uploadForm.degree_type} onChange={setField('degree_type')} disabled={uploading}>
                 <option value="">Select degree (optional)…</option>
                 {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </FormField>
-
-            {/* Issue Date */}
             <FormField label="Issue Date" required>
-              <input
-                type="date"
-                className="form-input"
-                value={uploadForm.issue_date}
-                onChange={setField('issue_date')}
-                disabled={uploading}
-              />
+              <input type="date" className="form-input" value={uploadForm.issue_date} onChange={setField('issue_date')} disabled={uploading} />
             </FormField>
           </form>
         </Modal>

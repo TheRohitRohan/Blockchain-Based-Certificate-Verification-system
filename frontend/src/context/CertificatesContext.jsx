@@ -8,6 +8,8 @@ import {
   listCertificates,
   createCertificate,
   uploadCertificate,
+  updateCertificate,
+  deleteCertificate,
   verifyCertificate,
   revokeCertificate,
   getCertificateDownloadUrl,
@@ -141,6 +143,42 @@ export function CertificatesProvider({ children }) {
     }
   }, [fetchCertificates]);
 
+  // ── Update certificate ──────────────────────────────────
+  const updateCert = useCallback(async (certificateId, fields) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const result = await updateCertificate(certificateId, fields);
+      if (result.success) {
+        await fetchCertificates();
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: result.error ?? 'Failed to update certificate' });
+      }
+      return result;
+    } catch (err) {
+      const msg = err.response?.data?.error ?? err.message ?? 'Failed to update certificate';
+      dispatch({ type: 'SET_ERROR', payload: msg });
+      return { success: false, error: msg };
+    }
+  }, [fetchCertificates]);
+
+  // ── Delete certificate (admin only) ─────────────────────
+  const deleteCert = useCallback(async (certificateId) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const result = await deleteCertificate(certificateId);
+      if (result.success) {
+        await fetchCertificates();
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: result.error ?? 'Failed to delete certificate' });
+      }
+      return result;
+    } catch (err) {
+      const msg = err.response?.data?.error ?? err.message ?? 'Failed to delete certificate';
+      dispatch({ type: 'SET_ERROR', payload: msg });
+      return { success: false, error: msg };
+    }
+  }, [fetchCertificates]);
+
   // ── Clear verify result ─────────────────────────────────
   const clearVerifyResult = useCallback(() => {
     dispatch({ type: 'CLEAR_VERIFY' });
@@ -161,6 +199,8 @@ export function CertificatesProvider({ children }) {
     fetchCertificates,
     issueCertificate,
     uploadCert,
+    updateCert,
+    deleteCert,
     verify,
     revoke,
     clearVerifyResult,

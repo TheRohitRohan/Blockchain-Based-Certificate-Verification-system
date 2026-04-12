@@ -789,6 +789,37 @@
 
 /* ── Profile Page ──────────────────────────────────────────── */
 .profile-wrap { max-width: 480px; }
+.profile-avatar-section {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 8px 0 0;
+}
+.profile-avatar-wrap {
+  position: relative; width: 80px; height: 80px;
+  border-radius: 50%; cursor: pointer;
+  overflow: hidden;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.profile-avatar-img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.profile-avatar-initials {
+  font-size: 1.6rem; font-weight: 600; color: #fff;
+  letter-spacing: 1px; user-select: none;
+}
+.profile-avatar-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45); color: #fff;
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.profile-avatar-wrap:hover .profile-avatar-overlay {
+  opacity: 1;
+}
+.profile-avatar-hint {
+  font-size: 0.68rem; color: var(--text3);
+}
 
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 768px) {

@@ -99,6 +99,35 @@ export async function revokeCertificate(certificateId) {
 }
 
 /**
+ * Update certificate fields (course_name, degree_type, issue_date).
+ * At least one field must be provided.
+ *
+ * @param {string} certificateId
+ * @param {{ course_name?: string, degree_type?: string, issue_date?: string }} fields
+ * @returns {{ success: boolean, message: string }}
+ */
+export async function updateCertificate(certificateId, fields) {
+  const res = await axiosInstance.put('/certificates/update', {
+    certificate_id: certificateId,
+    ...fields,
+  });
+  return res.data;
+}
+
+/**
+ * Permanently delete a certificate (admin only).
+ *
+ * @param {string} certificateId
+ * @returns {{ success: boolean, message: string }}
+ */
+export async function deleteCertificate(certificateId) {
+  const res = await axiosInstance.delete('/certificates/delete', {
+    data: { certificate_id: certificateId },
+  });
+  return res.data;
+}
+
+/**
  * Build the download URL for a certificate PDF.
  * Returns a plain URL string — use as an <a href> or window.open().
  * The backend sends the PDF as an attachment with Content-Type: application/pdf.

@@ -5,12 +5,12 @@ import { useAuthContext } from '../../context/AuthContext';
 import { PageSpinner, EmptyState, Modal, ConfirmModal, Badge, FormField, Spinner } from '../../components/ui';
 import { getCertificateDownloadUrl } from '../../api/certificates.api';
 import toast from 'react-hot-toast';
-import { Eye, ShieldX, Download, Upload, FileUp, X } from 'lucide-react';
+import { Eye, ShieldX, Download, Upload, FileUp, X, Pencil } from 'lucide-react';
 
 const DEGREE_TYPES = ['Bachelor', 'Master', 'Doctor', 'Diploma', 'Certificate', 'Associate'];
 
 export default function UniversityCertificates() {
-  const { certificates, fetchCertificates, revoke, uploadCert, isLoading } = useCertificatesContext();
+  const { certificates, fetchCertificates, revoke, uploadCert, updateCert, isLoading } = useCertificatesContext();
   const { students, fetchStudents } = useDataContext();
   const { user } = useAuthContext();
 
@@ -29,7 +29,13 @@ export default function UniversityCertificates() {
   const [uploadFile, setUploadFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({ course_name: '', degree_type: '', issue_date: '' });
+  const [editing, setEditing] = useState(false);
+
   const setField = (k) => (e) => setUploadForm((f) => ({ ...f, [k]: e.target.value }));
+  const setEditField = (k) => (e) => setEditForm((f) => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => { fetchCertificates(); }, []);
 
@@ -106,6 +112,40 @@ export default function UniversityCertificates() {
     }
   }
 
+  // ── Edit handlers ──────────────────────────────────────────
+  function openEdit(cert) {
+    setEditTarget(cert);
+    setEditForm({
+      course_name: cert.course_name ?? '',
+      degree_type: cert.degree_type ?? '',
+      issue_date: cert.issue_date ?? '',
+    });
+  }
+
+  async function handleEditSubmit(e) {
+    e.preventDefault();
+    if (!editTarget) return;
+    const changes = {};
+    if (editForm.course_name && editForm.course_name !== editTarget.course_name) changes.course_name = editForm.course_name;
+    if (editForm.degree_type !== editTarget.degree_type) changes.degree_type = editForm.degree_type;
+    if (editForm.issue_date && editForm.issue_date !== editTarget.issue_date) changes.issue_date = editForm.issue_date;
+
+    if (Object.keys(changes).length === 0) {
+      toast.error('No changes to save');
+      return;
+    }
+    setEditing(true);
+    const res = await updateCert(editTarget.certificate_id, changes);
+    setEditing(false);
+    if (res.success) {
+      toast.success('Certificate updated');
+      setEditTarget(null);
+      setDetailTarget(null);
+    } else {
+      toast.error(res.error ?? 'Update failed');
+    }
+  }
+
   if (isLoading && certificates.length === 0) return <PageSpinner />;
 
   return (
@@ -139,7 +179,7 @@ export default function UniversityCertificates() {
             </thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.certificate_id}>
+                <tr key={c?.certificate_id ?? c?.id}>
                   <td className="mono-id">{c?.certificate_id}</td>
                   <td>{c.student_name ?? '—'}</td>
                   <td>{c.course_name}</td>
@@ -148,10 +188,13 @@ export default function UniversityCertificates() {
                   <td><Badge status={c.status} /></td>
                   <td>
                     <span style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-icon" onClick={() => setDetailTarget(c)}><Eye size={13} /></button>
+                      <button className="btn-icon" title="View" onClick={() => setDetailTarget(c)}><Eye size={13} /></button>
                       <a className="btn-icon" href={getCertificateDownloadUrl(c.certificate_id)} target="_blank" rel="noreferrer" title="Download PDF"><Download size={13} /></a>
                       {c.status === 'active' && (
-                        <button className="btn-icon" style={{ color: 'var(--red)' }} onClick={() => setRevokeTarget(c)}><ShieldX size={13} /></button>
+                        <button className="btn-icon" title="Edit" onClick={() => openEdit(c)}><Pencil size={13} /></button>
+                      )}
+                      {c.status === 'active' && (
+                        <button className="btn-icon" style={{ color: 'var(--red)' }} title="Revoke" onClick={() => setRevokeTarget(c)}><ShieldX size={13} /></button>
                       )}
                     </span>
                   </td>
@@ -166,7 +209,8 @@ export default function UniversityCertificates() {
         <Modal title="Certificate Details" onClose={() => setDetailTarget(null)}
           footer={
             <>
-              <a className="btn-ghost-sm" href={getCertificateDownloadUrl(detailTarget.certificate_id)} target="_blank" rel="noreferrer">↓ PDF</a>
+              <a className="btn-ghost-sm" href={getCertificateDownloadUrl(detailTarget?.certificate_id)} target="_blank" rel="noreferrer">↓ PDF</a>
+              {detailTarget.status === 'active' && (<button className="btn-ghost-sm" onClick={() => openEdit(detailTarget)}>Edit</button>)}
               {detailTarget.status === 'active' && (<button className="btn-danger-sm" onClick={() => setRevokeTarget(detailTarget)}>Revoke</button>)}
               <button className="btn-ghost-sm" onClick={() => setDetailTarget(null)}>Close</button>
             </>
@@ -184,12 +228,46 @@ export default function UniversityCertificates() {
       {revokeTarget && (
         <ConfirmModal
           title="Revoke Certificate"
-          message={`Revoke certificate ${revokeTarget.certificate_id}? This cannot be undone.`}
+          message={`Revoke certificate ${revokeTarget?.certificate_id}? This cannot be undone.`}
           confirmLabel={revoking ? 'Revoking…' : 'Revoke Certificate'}
           danger
           onConfirm={handleRevoke}
           onCancel={() => setRevokeTarget(null)}
         />
+      )}
+
+      {/* ── Edit Certificate Modal ───────────────────────────── */}
+      {editTarget && (
+        <Modal
+          title="Edit Certificate"
+          onClose={() => setEditTarget(null)}
+          footer={
+            <>
+              <button className="btn-ghost-sm" onClick={() => setEditTarget(null)}>Cancel</button>
+              <button className="btn-primary" disabled={editing} onClick={handleEditSubmit}>
+                {editing ? <><Spinner size={12} /> Saving…</> : 'Save Changes'}
+              </button>
+            </>
+          }
+        >
+          <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: 16 }}>
+            Editing <strong style={{ color: 'var(--text)' }}>{editTarget?.certificate_id}</strong> — {editTarget?.student_name}
+          </p>
+          <form onSubmit={handleEditSubmit} className="form-grid">
+            <FormField label="Course Name">
+              <input className="form-input" value={editForm.course_name} onChange={setEditField('course_name')} disabled={editing} />
+            </FormField>
+            <FormField label="Degree Type">
+              <select className="form-select" value={editForm.degree_type} onChange={setEditField('degree_type')} disabled={editing}>
+                <option value="">None</option>
+                {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Issue Date">
+              <input type="date" className="form-input" value={editForm.issue_date} onChange={setEditField('issue_date')} disabled={editing} />
+            </FormField>
+          </form>
+        </Modal>
       )}
 
       {/* ── Upload Certificate Modal ─────────────────────────── */}
@@ -211,7 +289,6 @@ export default function UniversityCertificates() {
           }
         >
           <form onSubmit={handleUploadSubmit} className="form-grid">
-            {/* PDF File */}
             <FormField label="Certificate PDF" required>
               <div className="upload-file-zone">
                 {uploadFile ? (
@@ -225,19 +302,11 @@ export default function UniversityCertificates() {
                     <Upload size={18} style={{ opacity: 0.5 }} />
                     <span>Click to select a PDF file</span>
                     <span style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>Max 10MB • PDF only</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={handleFileChange}
-                      style={{ display: 'none' }}
-                    />
+                    <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" onChange={handleFileChange} style={{ display: 'none' }} />
                   </label>
                 )}
               </div>
             </FormField>
-
-            {/* Student */}
             <FormField label="Student" required>
               <select className="form-select" value={uploadForm.student_id} onChange={setField('student_id')} disabled={uploading}>
                 <option value="">Select student…</option>
@@ -246,35 +315,17 @@ export default function UniversityCertificates() {
                 ))}
               </select>
             </FormField>
-
-            {/* Course Name */}
             <FormField label="Course Name" required>
-              <input
-                className="form-input"
-                value={uploadForm.course_name}
-                onChange={setField('course_name')}
-                placeholder="e.g. Computer Science"
-                disabled={uploading}
-              />
+              <input className="form-input" value={uploadForm.course_name} onChange={setField('course_name')} placeholder="e.g. Computer Science" disabled={uploading} />
             </FormField>
-
-            {/* Degree Type (optional) */}
             <FormField label="Degree Type">
               <select className="form-select" value={uploadForm.degree_type} onChange={setField('degree_type')} disabled={uploading}>
                 <option value="">Select degree (optional)…</option>
                 {DEGREE_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </FormField>
-
-            {/* Issue Date */}
             <FormField label="Issue Date" required>
-              <input
-                type="date"
-                className="form-input"
-                value={uploadForm.issue_date}
-                onChange={setField('issue_date')}
-                disabled={uploading}
-              />
+              <input type="date" className="form-input" value={uploadForm.issue_date} onChange={setField('issue_date')} disabled={uploading} />
             </FormField>
           </form>
         </Modal>
