@@ -225,7 +225,7 @@ Increases user engagement and personalization. Currently, the UI relies complete
 - [x] Certificate upload endpoint implemented (`POST /certificates/upload`)
 - [x] Create an "Upload Existing Certificate" button and modal inside `UniversityCertificates.jsx` / `AdminCertificates.jsx`. The modal must collect: `student_id`, `course_name`, `issue_date`, optionally `degree_type`, and the PDF file. Admin modal must also collect `university_id`.
 - [x] Certificate update endpoint implemented (`PUT /certificates/update`)
-- [ ] Add an `Edit` action and modal in certificate tables (available to both `university` and `admin` roles) to update `course_name`, `degree_type`, and/or `issue_date` via the update endpoint.
+- [x] Add an `Edit` action and modal in certificate tables (available to both `university` and `admin` roles) to update `course_name`, `degree_type`, and/or `issue_date` via the update endpoint.
 - [x] Certificate delete endpoint implemented (`DELETE /certificates/delete`)
-- [ ] Add a `Delete` action in the `AdminCertificates` table (visible to `admin` role **only**, completely hidden for `university` role) to call the delete endpoint.
-- [ ] Build an overlay image uploader on the avatar circle component in `ProfilePage.jsx`. On click, open a file picker filtered to JPG/PNG, then `PUT` to `/auth/profile/avatar`. After success, update the displayed avatar using the `avatar_path` from the response prepended with the API base URL.
+- [x] Add a `Delete` action in the `AdminCertificates` table (visible to `admin` role **only**, completely hidden for `university` role) to call the delete endpoint.
+- [x] Build an overlay image uploader on the avatar circle component in `ProfilePage.jsx`. On click, open a file picker filtered to JPG/PNG, then `PUT` to `/auth/profile/avatar`. After success, update the displayed avatar using the `avatar_path` from the response prepended with the API base URL.
