@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { Sun, Moon } from 'lucide-react';
+import { Link } from 'react-router';
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -24,7 +25,7 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between">
         {/* Wordmark */}
-        <a href="#" className="flex items-center gap-2.5 group">
+        <a href="/" className="flex items-center gap-2.5 group">
           {/* Minimal hex mark — pure SVG, no color */}
           <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
             <path
@@ -45,7 +46,7 @@ export default function Navbar() {
 
         {/* Nav links */}
         <nav className="hidden md:flex items-center gap-8">
-          {['How it works', 'Security', 'Protocol'].map(link => (
+          {['How it works', 'Security', 'Stats'].map(link => (
             <a
               key={link}
               href={`#${link.toLowerCase().replace(/\s+/g, '-')}`}
@@ -61,15 +62,15 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="flex items-center gap-3">
-          <a
-            href="#verify"
+          <Link
+            href="/verify"
             className="hidden sm:inline-block text-sm transition-colors duration-150"
             style={{ color: 'var(--text2)' }}
             onMouseEnter={e => (e.target.style.color = 'var(--text)')}
             onMouseLeave={e => (e.target.style.color = 'var(--text2)')}
           >
             Verify
-          </a>
+          </Link>
           <button 
             onClick={toggle} 
             className="hidden sm:flex items-center justify-center transition-colors duration-150"
@@ -81,9 +82,9 @@ export default function Navbar() {
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
           
-          <a href="#login" className="btn btn-white text-sm py-2 px-5" style={{ fontWeight: 500 }}>
+          <Link href="/login" className="btn btn-white text-sm py-2 px-5" style={{ fontWeight: 500 }}>
             Get started
-          </a>
+          </Link>
         </div>
       </div>
     </header>
